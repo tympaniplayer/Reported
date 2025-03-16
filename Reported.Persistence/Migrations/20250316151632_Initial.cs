@@ -17,6 +17,8 @@ namespace Reported.Persistence.Migrations
                     Id = table.Column<int>(type: "INTEGER", nullable: false)
                         .Annotation("Sqlite:Autoincrement", true),
                     DiscordId = table.Column<ulong>(type: "INTEGER", nullable: false),
+                    InitiatedUserDiscordId = table.Column<ulong>(type: "INTEGER", nullable: false),
+                    Confused = table.Column<bool>(type: "INTEGER", nullable: false),
                     Description = table.Column<string>(type: "TEXT", nullable: true)
                 },
                 constraints: table =>

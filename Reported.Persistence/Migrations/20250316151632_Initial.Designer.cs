@@ -10,7 +10,7 @@ using Reported.Persistence;
 namespace Reported.Persistence.Migrations
 {
     [DbContext(typeof(ReportedDbContext))]
-    [Migration("20250316020233_Initial")]
+    [Migration("20250316151632_Initial")]
     partial class Initial
     {
         /// <inheritdoc />
@@ -25,10 +25,16 @@ namespace Reported.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("Confused")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Description")
                         .HasColumnType("TEXT");
 
                     b.Property<ulong>("DiscordId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<ulong>("InitiatedUserDiscordId")
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");

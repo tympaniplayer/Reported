@@ -22,10 +22,16 @@ namespace Reported.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("Confused")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Description")
                         .HasColumnType("TEXT");
 
                     b.Property<ulong>("DiscordId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<ulong>("InitiatedUserDiscordId")
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
