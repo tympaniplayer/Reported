@@ -1,4 +1,5 @@
-﻿using Discord;
+﻿using System.Text;
+using Discord;
 using Discord.Net;
 using Discord.WebSocket;
 using Microsoft.EntityFrameworkCore;
@@ -81,16 +82,24 @@ public static class Program
     private static async Task ClientReady()
     {
         // Let's do our global command
-        var globalCommand = new SlashCommandBuilder();
-        globalCommand
+        var reportGlobalCommand = new SlashCommandBuilder();
+        reportGlobalCommand
             .WithName("report")
             .WithDescription("Report a user for being dingus")
             .WithContextTypes(InteractionContextType.PrivateChannel, InteractionContextType.BotDm, InteractionContextType.Guild)
             .AddOption("user", ApplicationCommandOptionType.User, "The user you want to report.");
+
+        var whoReportedGlobalCommand = new SlashCommandBuilder();
+        whoReportedGlobalCommand
+            .WithName("who-reported")
+            .WithDescription("Stats on who reported you")
+            .WithContextTypes(InteractionContextType.PrivateChannel, InteractionContextType.BotDm,
+                InteractionContextType.Guild);
         
         try
         {
-            await _client!.CreateGlobalApplicationCommandAsync(globalCommand.Build());
+            await _client!.CreateGlobalApplicationCommandAsync(reportGlobalCommand.Build());
+            await _client.CreateGlobalApplicationCommandAsync(whoReportedGlobalCommand.Build());
         }
         catch(HttpException exception)
         {
@@ -99,10 +108,49 @@ public static class Program
         }
     }
 
-    private static async Task SlashCommandHandler(SocketSlashCommand command)
+    private static Task SlashCommandHandler(SocketSlashCommand command)
     {
-        var dbContext = new ReportedDbContext();
+        using var dbContext = new ReportedDbContext();
+        switch (command.CommandName)
+        {
+            case "report":
+                return HandleReportCommand(dbContext, command);
+            case "who-reported":
+                return HandleWhoReportedCommand(dbContext, command);
+            default:
+                _logger!.Error($"Unexpected command name received: {command.CommandName} Investigate");
+                return Task.CompletedTask;
+        }
+    }
+
+    private static async Task HandleWhoReportedCommand(ReportedDbContext dbContext, SocketSlashCommand command)
+    {
+        IUser? user = command.User;
+
+        var reportsByUser = dbContext.Set<UserReport>().Where(ur => ur.DiscordId == user.Id)
+            .GroupBy(ur => ur.InitiatedUserDiscordId);
+
+        var stringBuilder = new StringBuilder();
+        foreach (var userReports in reportsByUser)
+        {
+            var reportUser = _client!.GetUser(userReports.Key);
+            var count = userReports.Count();
+
+            stringBuilder.AppendLine($"{reportUser.Mention}: {count} {(count > 1 ? "times" : "time")}");
+        }
         
+        var builder = new EmbedBuilder();
+        builder
+            .WithTitle("This is who has reported you")
+            .WithDescription(stringBuilder.ToString())
+            .WithColor(Color.Default)
+            .WithCurrentTimestamp();
+
+        await command.RespondAsync(embed: builder.Build(), ephemeral: true);
+    }
+
+    private static async Task HandleReportCommand(ReportedDbContext dbContext, SocketSlashCommand command)
+    {
         var guildUser = (IUser)command.Data.Options.First().Value;
         IUser? initiatedUser = command.User;
 
@@ -126,10 +174,11 @@ public static class Program
         {
             var userReport = new UserReport(guildUser.Id, initiatedUser.Id);
             dbContext.Set<UserReport>().Add(userReport);
-        
+
             await dbContext.SaveChangesAsync();
-        
-            await command.RespondAsync($"{guildUser.Mention} has been reported{Environment.NewLine}They have been reported {count + 1} {(count > 0 ? "times" : "time")}."); 
+
+            await command.RespondAsync(
+                $"{guildUser.Mention} has been reported{Environment.NewLine}They have been reported {count + 1} {(count > 0 ? "times" : "time")}.");
         }
     }
 }
