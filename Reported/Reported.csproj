@@ -21,5 +21,9 @@
     <ItemGroup>
       <ProjectReference Include="..\Reported.Persistence\Reported.Persistence.csproj" />
     </ItemGroup>
+    
+    <ItemGroup>
+        <None Update="Reported.service" CopyToPublishDirectory="Always" />
+    </ItemGroup>
 
 </Project>

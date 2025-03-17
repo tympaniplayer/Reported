@@ -63,17 +63,18 @@ public static class Program
     private static async Task InitializeDatabase()
     {
         var dbContext = new ReportedDbContext();
+        await dbContext.Database.EnsureCreatedAsync();
 
         var pendingMigrations = await dbContext.Database.GetPendingMigrationsAsync();
         if (!pendingMigrations.Any())
         {
-            _logger.Information("Applying database migrations...");
+            _logger!.Information("Applying database migrations...");
             await dbContext.Database.MigrateAsync();
             _logger.Information("Migrations applied");
         }
         else
         {
-            _logger.Information("No pending migrations.");
+            _logger!.Information("No pending migrations.");
         }
     }
 
@@ -89,7 +90,7 @@ public static class Program
         
         try
         {
-            await _client.CreateGlobalApplicationCommandAsync(globalCommand.Build());
+            await _client!.CreateGlobalApplicationCommandAsync(globalCommand.Build());
         }
         catch(HttpException exception)
         {

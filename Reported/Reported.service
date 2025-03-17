@@ -1,0 +1,23 @@
+[Unit]
+Description=Reported Discord Shenanigans
+
+[Service]
+# systemd will run this executable to start the service
+# Change this to your path to dotnet (`which dotnet`) and your published location
+ExecStart=/home/nate/.dotnet/dotnet /home/nate/reported-bin/Reported.dll
+# to query logs using journalctl, set a logical name here
+SyslogIdentifier=Reported
+
+# Use your username to keep things simple.
+# If you pick a different user, make sure dotnet and all permissions are set correctly to run the app
+# To update permissions, use 'chown yourusername -R <publish-location>' to take ownership of the folder and files,
+User=nate
+
+# This environment variable is necessary when dotnet isn't loaded for the specified user.
+# To figure out this value, run 'env | grep DOTNET_ROOT' when dotnet has been loaded into your shell.
+Environment=DOTNET_ROOT=/home/nate/.dotnet
+# Environment file with Axios and Discord secrets make sure to set this to your own env file
+EnvironmentFile=/home/nate/reported-env/var_file
+
+[Install]
+WantedBy=multi-user.target
