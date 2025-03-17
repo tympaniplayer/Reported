@@ -13,7 +13,7 @@ namespace Reported;
 
 public static class Program
 {
-    private static DiscordSocketClient? _client;
+    private static DiscordSocketClient _client = null!;
     private const string AxiomApiUrl = "https://api.axiom.co/v1/datasets";
     private static ILogger? _logger;
     private static Random? _random;
@@ -23,7 +23,7 @@ public static class Program
         _logger = await InitializeLogger();
         await InitializeDatabase();
         _random = new Random();
-        
+
         var token = Environment.GetEnvironmentVariable("DISCORD_TOKEN");
         _client = new DiscordSocketClient();
         _client.Log += message =>
@@ -86,7 +86,8 @@ public static class Program
         reportGlobalCommand
             .WithName("report")
             .WithDescription("Report a user for being dingus")
-            .WithContextTypes(InteractionContextType.PrivateChannel, InteractionContextType.BotDm, InteractionContextType.Guild)
+            .WithContextTypes(InteractionContextType.PrivateChannel, InteractionContextType.BotDm,
+                InteractionContextType.Guild)
             .AddOption("user", ApplicationCommandOptionType.User, "The user you want to report.");
 
         var whoReportedGlobalCommand = new SlashCommandBuilder();
@@ -95,13 +96,13 @@ public static class Program
             .WithDescription("Stats on who reported you")
             .WithContextTypes(InteractionContextType.PrivateChannel, InteractionContextType.BotDm,
                 InteractionContextType.Guild);
-        
+
         try
         {
             await _client!.CreateGlobalApplicationCommandAsync(reportGlobalCommand.Build());
             await _client.CreateGlobalApplicationCommandAsync(whoReportedGlobalCommand.Build());
         }
-        catch(HttpException exception)
+        catch (HttpException exception)
         {
             var json = JsonConvert.SerializeObject(exception.Errors, Formatting.Indented);
             Console.WriteLine(json);
@@ -128,17 +129,16 @@ public static class Program
         IUser? user = command.User;
 
         var reportsByUser = dbContext.Set<UserReport>().Where(ur => ur.DiscordId == user.Id)
-            .GroupBy(ur => ur.InitiatedUserDiscordId);
+            .GroupBy(ur => ur.InitiatedDiscordName);
 
         var stringBuilder = new StringBuilder();
         foreach (var userReports in reportsByUser)
         {
-            var reportUser = _client!.GetUser(userReports.Key);
             var count = userReports.Count();
 
-            stringBuilder.AppendLine($"{reportUser.Mention}: {count} {(count > 1 ? "times" : "time")}");
+            stringBuilder.AppendLine($"{userReports.Key}: {count} {(count > 1 ? "times" : "time")}");
         }
-        
+
         var builder = new EmbedBuilder();
         builder
             .WithTitle("This is who has reported you")
@@ -161,18 +161,24 @@ public static class Program
         {
             for (var i = 0; i < 5; i++)
             {
-                var userReport = new UserReport(initiatedUser.Id, initiatedUser.Id, true);
+                var userReport = new UserReport(initiatedUser.Id,
+                    initiatedUser.Mention,initiatedUser.Id,
+                    initiatedUser.Mention,
+                    true);
                 dbContext.Set<UserReport>().Add(userReport);
             }
-            
+
             await dbContext.SaveChangesAsync();
-            
+
             await command.RespondAsync(
                 $"Oof, {initiatedUser.Mention} has hurt themselves in their confusion and has reported themselves 5 times");
         }
         else
         {
-            var userReport = new UserReport(guildUser.Id, initiatedUser.Id);
+            var userReport = new UserReport(guildUser.Id,
+                guildUser.Mention,
+                initiatedUser.Id,
+                initiatedUser.Mention);
             dbContext.Set<UserReport>().Add(userReport);
 
             await dbContext.SaveChangesAsync();
