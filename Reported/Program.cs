@@ -86,6 +86,8 @@ public static class Program
             await _client.CreateGlobalApplicationCommandAsync(Commands.ReportCommand());
             await _client.CreateGlobalApplicationCommandAsync(Commands.WhoReportedCommand());
             await _client.CreateGlobalApplicationCommandAsync(Commands.AliasListCommand());
+            await _client.CreateGlobalApplicationCommandAsync(Commands.WhyReportedCommand());
+            await _client.CreateGlobalApplicationCommandAsync(Commands.AppealCommand());
         }
         catch (HttpException exception)
         {
@@ -94,27 +96,105 @@ public static class Program
         }
     }
 
-    private static Task SlashCommandHandler(SocketSlashCommand command)
+    private static async Task SlashCommandHandler(SocketSlashCommand command)
     {
-        using var dbContext = new ReportedDbContext();
+        await using var dbContext = new ReportedDbContext();
         switch (command.CommandName)
         {
             case "report":
-                return HandleReportCommand(dbContext, command);
+                await HandleReportCommand(dbContext, command);
+                break;
             case "who-reported":
-                return HandleWhoReportedCommand(dbContext, command);
+                await HandleWhoReportedCommand(dbContext, command);
+                break;
             case "alias-list":
-                return HandleAliasListCommand(command);
+                await HandleAliasListCommand(command);
+                break;
+            case "why-reported":
+                await HandleWhyReportedCommand(dbContext, command);
+                break;
+            case "appeal":
+                await HandleAppeal(dbContext, command);
+                break;
             default:
                 _logger!.Error($"Unexpected command name received: {command.CommandName} Investigate");
-                return Task.CompletedTask;
+                break;
         }
+    }
+
+    private static async Task HandleAppeal(ReportedDbContext dbContext, SocketSlashCommand command)
+    {
+        var user = command.User;
+        var report = await dbContext.Set<UserReport>().FirstOrDefaultAsync(r => r.DiscordId == user.Id);
+
+        if (report is null)
+        {
+            for (var i = 0; i < 10; i++)
+            {
+                var userReport = new UserReport(user.Id,
+                    user.Mention,
+                    user.Id,
+                    user.Mention,
+                    true,
+                    "DU");
+                dbContext.Set<UserReport>().Add(userReport);
+                await command.RespondAsync(
+                    $"{user.Mention}, LOL you didn't have any reports to appeal. Here is 10 to get you started");
+            }
+        }
+        else
+        {
+            var random = new Random();
+            var coinToss = random.Next(0, 100);
+            if (coinToss > 49)
+            {
+                dbContext.Set<UserReport>().Remove(report);
+                await dbContext.SaveChangesAsync();
+                await command.RespondAsync(
+                    $"{user.Mention}, you have been treated poorly. Appeal approved :white_check_mark:");
+            }
+            else
+            {
+                await command.RespondAsync(
+                    $"{user.Mention}, no you deserved that report. Appeal denied :no_entry_sign: ");
+            }
+        }
+    }
+
+    private static async Task HandleWhyReportedCommand(ReportedDbContext dbContext, SocketSlashCommand command)
+    {
+        IUser? user = command.User;
+
+        var reportsByReason = dbContext.Set<UserReport>().Where(ur => ur.DiscordId == user.Id)
+            .GroupBy(ur => ur.Description);
+
+        var stringBuilder = new StringBuilder();
+        foreach (var reportGroup in  reportsByReason)
+        {
+            var count = reportGroup.Count();
+            if (string.IsNullOrWhiteSpace(reportGroup.Key))
+            {
+                stringBuilder.AppendLine($"Unknown Reason: {count} {(count > 1 ? "times" : "time")}");
+            }
+            else
+            {
+                stringBuilder.AppendLine(
+                    $"{Constants.ReportReasons[reportGroup.Key]},: {count} {(count > 1 ? "times" : "time")}");
+            }
+        }
+
+        var builder = new EmbedBuilder()
+            .WithTitle("This is a list of reasons you have been reported")
+            .WithDescription(stringBuilder.ToString())
+            .WithColor(Color.Red)
+            .WithCurrentTimestamp();
+        await command.RespondAsync(embed: builder.Build(), ephemeral: true);
     }
 
     private static async Task HandleAliasListCommand(SocketSlashCommand command)
     {
         var stringBuilder = new StringBuilder();
-        foreach (var keyValuePair in Constants.ReportReasons)
+        foreach (var keyValuePair in Constants.ReportReasons.Where(keyValuePair => keyValuePair.Key != "DU"))
         {
             stringBuilder.AppendLine($"{keyValuePair.Key}: {keyValuePair.Value}");
         }
