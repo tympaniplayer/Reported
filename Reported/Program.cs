@@ -81,26 +81,11 @@ public static class Program
 
     private static async Task ClientReady()
     {
-        // Let's do our global command
-        var reportGlobalCommand = new SlashCommandBuilder();
-        reportGlobalCommand
-            .WithName("report")
-            .WithDescription("Report a user for being dingus")
-            .WithContextTypes(InteractionContextType.PrivateChannel, InteractionContextType.BotDm,
-                InteractionContextType.Guild)
-            .AddOption("user", ApplicationCommandOptionType.User, "The user you want to report.");
-
-        var whoReportedGlobalCommand = new SlashCommandBuilder();
-        whoReportedGlobalCommand
-            .WithName("who-reported")
-            .WithDescription("Stats on who reported you")
-            .WithContextTypes(InteractionContextType.PrivateChannel, InteractionContextType.BotDm,
-                InteractionContextType.Guild);
-
         try
         {
-            await _client!.CreateGlobalApplicationCommandAsync(reportGlobalCommand.Build());
-            await _client.CreateGlobalApplicationCommandAsync(whoReportedGlobalCommand.Build());
+            await _client.CreateGlobalApplicationCommandAsync(Commands.ReportCommand());
+            await _client.CreateGlobalApplicationCommandAsync(Commands.WhoReportedCommand());
+            await _client.CreateGlobalApplicationCommandAsync(Commands.AliasListCommand());
         }
         catch (HttpException exception)
         {
@@ -118,10 +103,28 @@ public static class Program
                 return HandleReportCommand(dbContext, command);
             case "who-reported":
                 return HandleWhoReportedCommand(dbContext, command);
+            case "alias-list":
+                return HandleAliasListCommand(command);
             default:
                 _logger!.Error($"Unexpected command name received: {command.CommandName} Investigate");
                 return Task.CompletedTask;
         }
+    }
+
+    private static async Task HandleAliasListCommand(SocketSlashCommand command)
+    {
+        var stringBuilder = new StringBuilder();
+        foreach (var keyValuePair in Constants.ReportReasons)
+        {
+            stringBuilder.AppendLine($"{keyValuePair.Key}: {keyValuePair.Value}");
+        }
+
+        var builder = new EmbedBuilder()
+            .WithTitle("Alias List of Report Reasons (Alias:Reason)")
+            .WithDescription(stringBuilder.ToString())
+            .WithColor(Color.Red);
+
+        await command.RespondAsync(embed: builder.Build());
     }
 
     private static async Task HandleWhoReportedCommand(ReportedDbContext dbContext, SocketSlashCommand command)
@@ -153,6 +156,7 @@ public static class Program
     {
         var guildUser = (IUser)command.Data.Options.First().Value;
         IUser? initiatedUser = command.User;
+        var reason = (string)command.Data.Options.First(o => o.Name == "reason").Value;
 
         var count = await dbContext.Set<UserReport>().CountAsync(t => t.DiscordId == guildUser.Id);
 
@@ -164,7 +168,8 @@ public static class Program
                 var userReport = new UserReport(initiatedUser.Id,
                     initiatedUser.Mention,initiatedUser.Id,
                     initiatedUser.Mention,
-                    true);
+                    true,
+                    reason);
                 dbContext.Set<UserReport>().Add(userReport);
             }
 
@@ -178,13 +183,16 @@ public static class Program
             var userReport = new UserReport(guildUser.Id,
                 guildUser.Mention,
                 initiatedUser.Id,
-                initiatedUser.Mention);
+                initiatedUser.Mention,
+                false,
+                reason);
             dbContext.Set<UserReport>().Add(userReport);
 
             await dbContext.SaveChangesAsync();
 
+            var reasonExplained = Constants.ReportReasons[reason];
             await command.RespondAsync(
-                $"{guildUser.Mention} has been reported{Environment.NewLine}They have been reported {count + 1} {(count > 0 ? "times" : "time")}.");
+                $"{guildUser.Mention} has been reported for {reasonExplained}{Environment.NewLine}They have been reported {count + 1} {(count > 0 ? "times" : "time")}.");
         }
     }
 }
