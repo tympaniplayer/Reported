@@ -13,6 +13,7 @@ public static class Constants
         { "ON", "Offensive Name" },
         { "DU", "Dumb" },
         { "CAPS", "Caps" },
-        { "ST", "This Streamer Sucks" }
+        { "ST", "This Streamer Sucks" },
+        { "KS", "Kill Steal" }
     };
 }
