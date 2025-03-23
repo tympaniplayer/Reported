@@ -169,7 +169,7 @@ public static class Program
             .GroupBy(ur => ur.Description);
 
         var stringBuilder = new StringBuilder();
-        foreach (var reportGroup in  reportsByReason)
+        foreach (var reportGroup in reportsByReason)
         {
             var count = reportGroup.Count();
             if (string.IsNullOrWhiteSpace(reportGroup.Key))
@@ -238,7 +238,7 @@ public static class Program
         IUser? initiatedUser = command.User;
         var reason = (string)command.Data.Options.First(o => o.Name == "reason").Value;
 
-        var count = await dbContext.Set<UserReport>().CountAsync(t => t.DiscordId == guildUser.Id);
+        var userReports = dbContext.Set<UserReport>().Where(t => t.DiscordId == guildUser.Id);
 
         var random = _random!.Next(0, 100);
         if (random < 5)
@@ -246,7 +246,7 @@ public static class Program
             for (var i = 0; i < 5; i++)
             {
                 var userReport = new UserReport(initiatedUser.Id,
-                    initiatedUser.Mention,initiatedUser.Id,
+                    initiatedUser.Mention, initiatedUser.Id,
                     initiatedUser.Mention,
                     true,
                     reason);
@@ -260,6 +260,8 @@ public static class Program
         }
         else
         {
+            var count = await userReports.CountAsync();
+            var countOfThisType = await userReports.CountAsync(t => t.Description == reason);
             var userReport = new UserReport(guildUser.Id,
                 guildUser.Mention,
                 initiatedUser.Id,
@@ -272,7 +274,9 @@ public static class Program
 
             var reasonExplained = Constants.ReportReasons[reason];
             await command.RespondAsync(
-                $"{guildUser.Mention} has been reported for {reasonExplained}{Environment.NewLine}They have been reported {count + 1} {(count > 0 ? "times" : "time")}.");
+                $"{guildUser.Mention} has been reported for {reasonExplained}" +
+                $"{Environment.NewLine}They have been reported for {reasonExplained} {countOfThisType + 1} {(countOfThisType > 0 ? "times" : "time")}" +
+                $"{Environment.NewLine}They have been reported {count + 1} {(count > 0 ? "times" : "time")}.");
         }
     }
 }
