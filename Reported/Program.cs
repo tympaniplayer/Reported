@@ -260,23 +260,33 @@ public static class Program
         }
         else
         {
+            var criticalRoll = _random!.Next(0, 100);
+            int times = criticalRoll == 1 ? 2 : 1;
             var count = await userReports.CountAsync();
             var countOfThisType = await userReports.CountAsync(t => t.Description == reason);
-            var userReport = new UserReport(guildUser.Id,
-                guildUser.Mention,
-                initiatedUser.Id,
-                initiatedUser.Mention,
-                false,
-                reason);
-            dbContext.Set<UserReport>().Add(userReport);
+            for (var i = 0; i < times; i++)
+            {
 
-            await dbContext.SaveChangesAsync();
+                var userReport = new UserReport(guildUser.Id,
+                    guildUser.Mention,
+                    initiatedUser.Id,
+                    initiatedUser.Mention,
+                    false,
+                    reason);
+                dbContext.Set<UserReport>().Add(userReport);
+
+                await dbContext.SaveChangesAsync();
+            }
 
             var reasonExplained = Constants.ReportReasons[reason];
             await command.RespondAsync(
                 $"{guildUser.Mention} has been reported for {reasonExplained}" +
-                $"{Environment.NewLine}They have been reported for {reasonExplained} {countOfThisType + 1} {(countOfThisType > 0 ? "times" : "time")}" +
-                $"{Environment.NewLine}They have been reported {count + 1} {(count > 0 ? "times" : "time")}.");
+                $"{Environment.NewLine}They have been reported for {reasonExplained} {countOfThisType + times} {(countOfThisType > 0 ? "times" : "time")}" +
+                $"{Environment.NewLine}They have been reported {count + times} {(count > 0 ? "times" : "time")}.");
+            if (criticalRoll == 1)
+            {
+                await command.RespondAsync($"Critical hit! {guildUser.Mention} has been reported twice!");
+            }
         }
     }
 }
