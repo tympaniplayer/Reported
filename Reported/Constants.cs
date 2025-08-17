@@ -16,6 +16,7 @@ public static class Constants
         { "ST", "This Streamer Sucks" },
         { "KS", "Kill Steal" },
         { "IL", "Why aren't you in my lobby?" },
-        { "WTF", "WTF" }
+        { "WTF", "WTF" },
+        {"QCD", "Quincy"}
     };
 }
