@@ -24,7 +24,8 @@ public static class Program
         await InitializeDatabase();
         _random = new Random();
 
-        var token = Environment.GetEnvironmentVariable("DISCORD_TOKEN");
+        var token = Environment.GetEnvironmentVariable("DISCORD_TOKEN")
+                    ?? throw new InvalidOperationException("Discord token environment variable not set");
         _client = new DiscordSocketClient();
         _client.Log += message =>
         {
