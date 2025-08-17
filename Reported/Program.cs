@@ -68,7 +68,7 @@ public static class Program
         await dbContext.Database.EnsureCreatedAsync();
 
         var pendingMigrations = await dbContext.Database.GetPendingMigrationsAsync();
-        if (!pendingMigrations.Any())
+        if (pendingMigrations.Any())
         {
             _logger!.Information("Applying database migrations...");
             await dbContext.Database.MigrateAsync();
