@@ -45,7 +45,7 @@ public static class Program
         var axiomToken = Environment.GetEnvironmentVariable("AXIOM_TOKEN");
         var axiomDataSet = Environment.GetEnvironmentVariable("AXIOM_DATASET");
 
-        if (string.IsNullOrEmpty(axiomDataSet) || string.IsNullOrEmpty(axiomDataSet))
+        if (string.IsNullOrWhiteSpace(axiomToken) || string.IsNullOrWhiteSpace(axiomDataSet))
         {
             throw new InvalidOperationException("Axiom environment variables not set");
         }
