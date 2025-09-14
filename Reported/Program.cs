@@ -67,17 +67,17 @@ public static class Program
         var dbContext = new ReportedDbContext();
         await dbContext.Database.EnsureCreatedAsync();
 
-        var pendingMigrations = await dbContext.Database.GetPendingMigrationsAsync();
-        if (pendingMigrations.Any())
-        {
-            _logger!.Information("Applying database migrations...");
-            await dbContext.Database.MigrateAsync();
-            _logger.Information("Migrations applied");
-        }
-        else
-        {
-            _logger!.Information("No pending migrations.");
-        }
+        // var pendingMigrations = await dbContext.Database.GetPendingMigrationsAsync();
+        // if (pendingMigrations.Any())
+        // {
+        //     _logger!.Information("Applying database migrations...");
+        //     await dbContext.Database.MigrateAsync();
+        //     _logger.Information("Migrations applied");
+        // }
+        // else
+        // {
+        //     _logger!.Information("No pending migrations.");
+        // }
     }
 
     private static async Task ClientReady()
@@ -153,6 +153,8 @@ public static class Program
                 await dbContext.SaveChangesAsync();
                 await command.RespondAsync(
                     $"{user.Mention}, you have been treated poorly. Appeal approved :white_check_mark:");
+                await command.FollowupAsync(
+                    "https://tenor.com/view/tiger-woods-stare-we-can-do-it-gif-11974968");
             }
             else
             {

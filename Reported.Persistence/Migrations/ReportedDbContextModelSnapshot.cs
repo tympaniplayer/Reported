@@ -46,7 +46,7 @@ namespace Reported.Persistence.Migrations
 
                     b.HasIndex("DiscordId");
 
-                    b.ToTable("UserReport");
+                    b.ToTable("UserReport", (string)null);
                 });
 #pragma warning restore 612, 618
         }
