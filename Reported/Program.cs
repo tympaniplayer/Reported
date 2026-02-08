@@ -46,20 +46,27 @@ public static class Program
         var axiomToken = Environment.GetEnvironmentVariable("AXIOM_TOKEN");
         var axiomDataSet = Environment.GetEnvironmentVariable("AXIOM_DATASET");
 
-        if (string.IsNullOrWhiteSpace(axiomToken) || string.IsNullOrWhiteSpace(axiomDataSet))
-        {
-            throw new InvalidOperationException("Axiom environment variables not set");
-        }
-
-        return Task.FromResult(Log.Logger = new LoggerConfiguration()
+        var loggerConfig = new LoggerConfiguration()
             .MinimumLevel.Debug()
-            .WriteTo.Console()
-            .WriteTo.Http(
+            .WriteTo.Console();
+
+        if (!string.IsNullOrWhiteSpace(axiomToken) && !string.IsNullOrWhiteSpace(axiomDataSet))
+        {
+            loggerConfig = loggerConfig.WriteTo.Http(
                 requestUri: $"{AxiomApiUrl}/{axiomDataSet}/ingest",
                 queueLimitBytes: null,
                 textFormatter: new ElasticsearchJsonFormatter(renderMessageTemplate: false, inlineFields: true),
-                httpClient: new AxiomHttpClient(axiomToken!))
-            .CreateLogger());
+                httpClient: new AxiomHttpClient(axiomToken));
+        }
+
+        var logger = loggerConfig.CreateLogger();
+
+        if (string.IsNullOrWhiteSpace(axiomToken) || string.IsNullOrWhiteSpace(axiomDataSet))
+        {
+            logger.Warning("Axiom environment variables not set - remote logging disabled");
+        }
+
+        return Task.FromResult(Log.Logger = logger);
     }
 
     private static async Task InitializeDatabase()

@@ -1,0 +1,15 @@
+services:
+  reported:
+    build: .
+    container_name: reported-bot
+    restart: unless-stopped
+    environment:
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - AXIOM_TOKEN=${AXIOM_TOKEN:-}
+      - AXIOM_DATASET=${AXIOM_DATASET:-}
+      - DATABASE_PATH=/data/reported.db
+    volumes:
+      - reported-data:/data
+
+volumes:
+  reported-data:
