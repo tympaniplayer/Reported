@@ -135,7 +135,7 @@ services:
       - reported-data:/data
 
 volumes:
-  reported-data:
+  reported-data: {}
 EOF
 
 # Pull and start (first time)

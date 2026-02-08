@@ -20,4 +20,4 @@ services:
       - reported-data:/data
 
 volumes:
-  reported-data:
+  reported-data: {}
