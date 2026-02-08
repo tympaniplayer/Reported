@@ -139,9 +139,10 @@ public static class Program
                     true,
                     "DU");
                 dbContext.Set<UserReport>().Add(userReport);
-                await command.RespondAsync(
-                    $"{user.Mention}, LOL you didn't have any reports to appeal. Here is 10 to get you started");
             }
+            
+            await command.RespondAsync(
+                $"{user.Mention}, LOL you didn't have any reports to appeal. Here is 10 to get you started");
         }
         else
         {
@@ -288,7 +289,7 @@ public static class Program
                 $"{Environment.NewLine}They have been reported {count + times} {(count > 0 ? "times" : "time")}.");
             if (criticalRoll == 1)
             {
-                await command.RespondAsync($"Critical hit! {guildUser.Mention} has been reported twice!");
+                await command.FollowupAsync($"Critical hit! {guildUser.Mention} has been reported twice!");
             }
         }
     }
