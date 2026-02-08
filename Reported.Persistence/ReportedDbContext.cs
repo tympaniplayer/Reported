@@ -7,9 +7,17 @@ public sealed class ReportedDbContext : DbContext
     private readonly string _dbPath;
     public ReportedDbContext()
     {
-        var folder = Environment.SpecialFolder.LocalApplicationData;
-        var path = Environment.GetFolderPath(folder);
-        _dbPath = Path.Join(path, "reported.db");
+        var envPath = Environment.GetEnvironmentVariable("DATABASE_PATH");
+        if (!string.IsNullOrWhiteSpace(envPath))
+        {
+            _dbPath = envPath;
+        }
+        else
+        {
+            var folder = Environment.SpecialFolder.LocalApplicationData;
+            var path = Environment.GetFolderPath(folder);
+            _dbPath = Path.Join(path, "reported.db");
+        }
     }
     
     protected override void OnConfiguring(DbContextOptionsBuilder options)

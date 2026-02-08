@@ -1,0 +1,23 @@
+# Production docker-compose for home server deployment
+# This file pulls from GHCR instead of building locally
+#
+# Usage on home server:
+#   1. Copy this file to your deployment directory
+#   2. Create .env file with DISCORD_TOKEN, AXIOM_TOKEN, AXIOM_DATASET
+#   3. Run: docker compose pull && docker compose up -d
+
+services:
+  reported:
+    image: ghcr.io/tympaniplayer/reported:latest
+    container_name: reported-bot
+    restart: unless-stopped
+    environment:
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - AXIOM_TOKEN=${AXIOM_TOKEN:-}
+      - AXIOM_DATASET=${AXIOM_DATASET:-}
+      - DATABASE_PATH=/data/reported.db
+    volumes:
+      - reported-data:/data
+
+volumes:
+  reported-data: {}
