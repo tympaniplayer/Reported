@@ -35,34 +35,30 @@ public sealed class ReportedDbContext : DbContext
     {
         await using var dbContext = new ReportedDbContext();
 
+        // If UserReport exists, this is a legacy database (created with EnsureCreated
+        // or partially migrated). Ensure the history table exists and pre-existing
+        // migrations are recorded so MigrateAsync only applies new ones.
+        // Uses IF NOT EXISTS / OR IGNORE for full idempotency.
         var conn = dbContext.Database.GetDbConnection();
         await conn.OpenAsync();
         await using var cmd = conn.CreateCommand();
 
-        cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='__EFMigrationsHistory'";
-        var historyExists = await cmd.ExecuteScalarAsync() != null;
+        cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='UserReport'";
+        var isLegacyDb = await cmd.ExecuteScalarAsync() != null;
 
-        if (!historyExists)
+        if (isLegacyDb)
         {
-            cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='UserReport'";
-            var tablesExist = await cmd.ExecuteScalarAsync() != null;
-
-            if (tablesExist)
-            {
-                // Database was created with EnsureCreated — backfill history
-                // so MigrateAsync only applies new migrations.
-                cmd.CommandText = """
-                    CREATE TABLE "__EFMigrationsHistory" (
-                        "MigrationId" TEXT NOT NULL PRIMARY KEY,
-                        "ProductVersion" TEXT NOT NULL
-                    );
-                    INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
-                    VALUES ('20250316151632_Initial', '9.0.3');
-                    INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
-                    VALUES ('20250317210437_UpdateTable', '9.0.3');
-                    """;
-                await cmd.ExecuteNonQueryAsync();
-            }
+            cmd.CommandText = """
+                CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" (
+                    "MigrationId" TEXT NOT NULL PRIMARY KEY,
+                    "ProductVersion" TEXT NOT NULL
+                );
+                INSERT OR IGNORE INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+                VALUES ('20250316151632_Initial', '9.0.3');
+                INSERT OR IGNORE INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+                VALUES ('20250317210437_UpdateTable', '9.0.3');
+                """;
+            await cmd.ExecuteNonQueryAsync();
         }
 
         await conn.CloseAsync();
