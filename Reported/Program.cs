@@ -205,6 +205,8 @@ public static class Program
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         var user = command.User;
 
+        // Ensure all pending EF Core migrations are applied so the AppealRecord table exists.
+        await dbContext.Database.MigrateAsync();
         var appealRecord = await dbContext.Set<AppealRecord>()
             .FirstOrDefaultAsync(a => a.DiscordId == user.Id);
 
