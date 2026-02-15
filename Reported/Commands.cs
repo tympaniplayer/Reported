@@ -66,4 +66,13 @@ public static class Commands
                 InteractionContextType.BotDm,
                 InteractionContextType.Guild)
             .Build();
+
+    public static SlashCommandProperties AppealCountCommand() =>
+        new SlashCommandBuilder()
+            .WithName("appeal-count")
+            .WithDescription("See how many appeals you've won")
+            .WithContextTypes(InteractionContextType.PrivateChannel,
+                InteractionContextType.BotDm,
+                InteractionContextType.Guild)
+            .Build();
 }

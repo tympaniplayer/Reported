@@ -31,7 +31,15 @@ _UpgradeReport_Files/
 
 Thumbs.db
 Desktop.ini
-.DS_Store
+**/.DS_Store
+
+# Claude Code (user-specific settings and commands)
+.claude/
+
+# SQLite runtime files
+*.db-shm
+*.db-wal
+*.db-journal
 
 # Docker secrets
 .env

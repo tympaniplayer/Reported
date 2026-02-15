@@ -71,3 +71,10 @@ Uses SQLite with Entity Framework Core. Database file is stored in `LocalApplica
 ## Deployment
 
 The project includes a systemd service file (`Reported.service`) for Linux deployment. Designed to run on small VPS or dedicated hardware like a Raspberry Pi.
+
+## Active Technologies
+- C# / .NET 9.0 (nullable reference types enabled) + Discord.Net 3.17.x, Entity Framework Core 9.0.3, Serilog (001-appeal-count)
+- SQLite via EF Core (existing `ReportedDbContext`) (001-appeal-count)
+
+## Recent Changes
+- 001-appeal-count: Added C# / .NET 9.0 (nullable reference types enabled) + Discord.Net 3.17.x, Entity Framework Core 9.0.3, Serilog

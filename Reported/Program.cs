@@ -96,6 +96,7 @@ public static class Program
             await _client.CreateGlobalApplicationCommandAsync(Commands.AliasListCommand());
             await _client.CreateGlobalApplicationCommandAsync(Commands.WhyReportedCommand());
             await _client.CreateGlobalApplicationCommandAsync(Commands.AppealCommand());
+            await _client.CreateGlobalApplicationCommandAsync(Commands.AppealCountCommand());
         }
         catch (HttpException exception)
         {
@@ -123,6 +124,9 @@ public static class Program
                 break;
             case "appeal":
                 await HandleAppeal(dbContext, command);
+                break;
+            case "appeal-count":
+                await HandleAppealCount(dbContext, command);
                 break;
             default:
                 _logger!.Error($"Unexpected command name received: {command.CommandName} Investigate");
@@ -155,10 +159,27 @@ public static class Program
         {
             var random = new Random();
             var coinToss = random.Next(0, 100);
+
+            var appealRecord = await dbContext.Set<AppealRecord>()
+                .FirstOrDefaultAsync(a => a.DiscordId == user.Id);
+
+            if (appealRecord is null)
+            {
+                appealRecord = new AppealRecord(user.Id, user.Mention);
+                dbContext.Set<AppealRecord>().Add(appealRecord);
+            }
+
             if (coinToss > 49)
             {
+                appealRecord.AppealWins++;
+                appealRecord.AppealAttempts++;
                 dbContext.Set<UserReport>().Remove(report);
                 await dbContext.SaveChangesAsync();
+
+                _logger!.Information(
+                    "Appeal outcome for {DiscordId}: {AppealOutcome}, total wins: {TotalWins}, total attempts: {TotalAttempts}",
+                    user.Id, "won", appealRecord.AppealWins, appealRecord.AppealAttempts);
+
                 await command.RespondAsync(
                     $"{user.Mention}, you have been treated poorly. Appeal approved :white_check_mark:");
                 await command.FollowupAsync(
@@ -166,10 +187,55 @@ public static class Program
             }
             else
             {
+                appealRecord.AppealAttempts++;
+                await dbContext.SaveChangesAsync();
+
+                _logger!.Information(
+                    "Appeal outcome for {DiscordId}: {AppealOutcome}, total wins: {TotalWins}, total attempts: {TotalAttempts}",
+                    user.Id, "lost", appealRecord.AppealWins, appealRecord.AppealAttempts);
+
                 await command.RespondAsync(
                     $"{user.Mention}, no you deserved that report. Appeal denied :no_entry_sign: ");
             }
         }
+    }
+
+    private static async Task HandleAppealCount(ReportedDbContext dbContext, SocketSlashCommand command)
+    {
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var user = command.User;
+
+        var appealRecord = await dbContext.Set<AppealRecord>()
+            .FirstOrDefaultAsync(a => a.DiscordId == user.Id);
+
+        var wins = appealRecord?.AppealWins ?? 0;
+        var attempts = appealRecord?.AppealAttempts ?? 0;
+        var rate = attempts > 0 ? (int)Math.Round((double)wins / attempts * 100) : 0;
+
+        stopwatch.Stop();
+        _logger!.Information(
+            "Appeal count query for {DiscordId} completed in {ElapsedMs}ms",
+            user.Id, stopwatch.ElapsedMilliseconds);
+
+        string message;
+        if (attempts == 0)
+        {
+            message = $"{user.Mention}, you haven't even tried to appeal yet. Coward.";
+        }
+        else if (wins == 0)
+        {
+            message = $"{user.Mention}, you've won 0 out of {attempts} appeals (0%). Yikes.";
+        }
+        else if (rate < 30)
+        {
+            message = $"{user.Mention}, you've won {wins} out of {attempts} appeals ({rate}%). The system is clearly rigged.";
+        }
+        else
+        {
+            message = $"{user.Mention}, you've won {wins} out of {attempts} appeals ({rate}%). Not bad... or is it?";
+        }
+
+        await command.RespondAsync(message);
     }
 
     private static async Task HandleWhyReportedCommand(ReportedDbContext dbContext, SocketSlashCommand command)
