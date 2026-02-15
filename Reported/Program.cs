@@ -71,20 +71,7 @@ public static class Program
 
     private static async Task InitializeDatabase()
     {
-        var dbContext = new ReportedDbContext();
-        await dbContext.Database.EnsureCreatedAsync();
-
-        // var pendingMigrations = await dbContext.Database.GetPendingMigrationsAsync();
-        // if (pendingMigrations.Any())
-        // {
-        //     _logger!.Information("Applying database migrations...");
-        //     await dbContext.Database.MigrateAsync();
-        //     _logger.Information("Migrations applied");
-        // }
-        // else
-        // {
-        //     _logger!.Information("No pending migrations.");
-        // }
+        await ReportedDbContext.InitializeDatabaseAsync();
     }
 
     private static async Task ClientReady()
@@ -205,8 +192,6 @@ public static class Program
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         var user = command.User;
 
-        // Ensure all pending EF Core migrations are applied so the AppealRecord table exists.
-        await dbContext.Database.MigrateAsync();
         var appealRecord = await dbContext.Set<AppealRecord>()
             .FirstOrDefaultAsync(a => a.DiscordId == user.Id);
 
