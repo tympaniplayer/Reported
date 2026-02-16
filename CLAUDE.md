@@ -75,6 +75,8 @@ The project includes a systemd service file (`Reported.service`) for Linux deplo
 ## Active Technologies
 - C# / .NET 9.0 (nullable reference types enabled) + Discord.Net 3.17.x, Entity Framework Core 9.0.3, Serilog (001-appeal-count)
 - SQLite via EF Core (existing `ReportedDbContext`) (001-appeal-count)
+- C# / .NET 9.0 (nullable reference types enabled) + Discord.Net 3.17.x, Entity Framework Core 9.0.3, Serilog, CSharpFunctionalExtensions (new) (002-test-infrastructure)
+- SQLite via EF Core (existing); in-memory SQLite for tests (002-test-infrastructure)
 
 ## Recent Changes
 - 001-appeal-count: Added C# / .NET 9.0 (nullable reference types enabled) + Discord.Net 3.17.x, Entity Framework Core 9.0.3, Serilog

@@ -33,6 +33,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Run tests
+        run: dotnet test --configuration Release --verbosity normal
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
