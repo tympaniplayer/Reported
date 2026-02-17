@@ -13,7 +13,7 @@ COPY . .
 FROM build AS test
 RUN dotnet test --configuration Release --no-restore --verbosity normal
 
-FROM build AS publish
+FROM test AS publish
 RUN dotnet publish Reported/Reported.csproj -a $TARGETARCH -c Release -o /app/publish --no-restore
 
 FROM mcr.microsoft.com/dotnet/runtime:9.0 AS final
