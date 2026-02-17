@@ -5,6 +5,7 @@ namespace Reported.Persistence;
 public sealed class ReportedDbContext : DbContext
 {
     private readonly string _dbPath;
+
     public ReportedDbContext()
     {
         var envPath = Environment.GetEnvironmentVariable("DATABASE_PATH");
@@ -19,9 +20,19 @@ public sealed class ReportedDbContext : DbContext
             _dbPath = Path.Join(path, "reported.db");
         }
     }
-    
+
+    public ReportedDbContext(DbContextOptions<ReportedDbContext> options) : base(options)
+    {
+        _dbPath = string.Empty;
+    }
+
     protected override void OnConfiguring(DbContextOptionsBuilder options)
-        => options.UseSqlite($"Data Source={_dbPath}");
+    {
+        if (!options.IsConfigured)
+        {
+            options.UseSqlite($"Data Source={_dbPath}");
+        }
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
         => modelBuilder.ApplyConfigurationsFromAssembly(typeof(ReportedDbContext).Assembly);

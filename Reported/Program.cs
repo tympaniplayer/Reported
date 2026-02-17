@@ -1,11 +1,12 @@
-﻿using System.Text;
+using System.Text;
 using Discord;
 using Discord.Net;
 using Discord.WebSocket;
-using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
 using Reported.External;
+using Reported.Models;
 using Reported.Persistence;
+using Reported.Services;
 using Serilog;
 using Serilog.Formatting.Elasticsearch;
 
@@ -16,13 +17,13 @@ public static class Program
     private static DiscordSocketClient _client = null!;
     private const string AxiomApiUrl = "https://api.axiom.co/v1/datasets";
     private static ILogger? _logger;
-    private static Random? _random;
+    private static IRandomProvider _randomProvider = null!;
 
     public static async Task Main()
     {
         _logger = await InitializeLogger();
         await InitializeDatabase();
-        _random = new Random();
+        _randomProvider = new RandomProvider();
 
         var token = Environment.GetEnvironmentVariable("DISCORD_TOKEN")
                     ?? throw new InvalidOperationException("Discord token environment variable not set");
@@ -124,66 +125,41 @@ public static class Program
     private static async Task HandleAppeal(ReportedDbContext dbContext, SocketSlashCommand command)
     {
         var user = command.User;
-        var report = await dbContext.Set<UserReport>().FirstOrDefaultAsync(r => r.DiscordId == user.Id);
+        var appealService = new AppealService(dbContext, _randomProvider);
+        var result = await appealService.ProcessAppeal(user.Id, user.Mention);
 
-        if (report is null)
+        if (result.IsFailure)
         {
-            for (var i = 0; i < 10; i++)
-            {
-                var userReport = new UserReport(user.Id,
-                    user.Mention,
-                    user.Id,
-                    user.Mention,
-                    true,
-                    "DU");
-                dbContext.Set<UserReport>().Add(userReport);
-            }
-            
+            _logger!.Error("Appeal failed for {DiscordId}: {Error}", user.Id, result.Error);
+            return;
+        }
+
+        var outcome = result.Value;
+
+        if (outcome.HadNoReports)
+        {
             await command.RespondAsync(
                 $"{user.Mention}, LOL you didn't have any reports to appeal. Here is 10 to get you started");
         }
+        else if (outcome.Won)
+        {
+            _logger!.Information(
+                "Appeal outcome for {DiscordId}: {AppealOutcome}, total wins: {TotalWins}, total attempts: {TotalAttempts}",
+                user.Id, "won", outcome.AppealWins, outcome.AppealAttempts);
+
+            await command.RespondAsync(
+                $"{user.Mention}, you have been treated poorly. Appeal approved :white_check_mark:");
+            await command.FollowupAsync(
+                "https://tenor.com/view/tiger-woods-stare-we-can-do-it-gif-11974968");
+        }
         else
         {
-            var random = new Random();
-            var coinToss = random.Next(0, 100);
+            _logger!.Information(
+                "Appeal outcome for {DiscordId}: {AppealOutcome}, total wins: {TotalWins}, total attempts: {TotalAttempts}",
+                user.Id, "lost", outcome.AppealWins, outcome.AppealAttempts);
 
-            var appealRecord = await dbContext.Set<AppealRecord>()
-                .FirstOrDefaultAsync(a => a.DiscordId == user.Id);
-
-            if (appealRecord is null)
-            {
-                appealRecord = new AppealRecord(user.Id, user.Mention);
-                dbContext.Set<AppealRecord>().Add(appealRecord);
-            }
-
-            if (coinToss > 49)
-            {
-                appealRecord.AppealWins++;
-                appealRecord.AppealAttempts++;
-                dbContext.Set<UserReport>().Remove(report);
-                await dbContext.SaveChangesAsync();
-
-                _logger!.Information(
-                    "Appeal outcome for {DiscordId}: {AppealOutcome}, total wins: {TotalWins}, total attempts: {TotalAttempts}",
-                    user.Id, "won", appealRecord.AppealWins, appealRecord.AppealAttempts);
-
-                await command.RespondAsync(
-                    $"{user.Mention}, you have been treated poorly. Appeal approved :white_check_mark:");
-                await command.FollowupAsync(
-                    "https://tenor.com/view/tiger-woods-stare-we-can-do-it-gif-11974968");
-            }
-            else
-            {
-                appealRecord.AppealAttempts++;
-                await dbContext.SaveChangesAsync();
-
-                _logger!.Information(
-                    "Appeal outcome for {DiscordId}: {AppealOutcome}, total wins: {TotalWins}, total attempts: {TotalAttempts}",
-                    user.Id, "lost", appealRecord.AppealWins, appealRecord.AppealAttempts);
-
-                await command.RespondAsync(
-                    $"{user.Mention}, no you deserved that report. Appeal denied :no_entry_sign: ");
-            }
+            await command.RespondAsync(
+                $"{user.Mention}, no you deserved that report. Appeal denied :no_entry_sign: ");
         }
     }
 
@@ -192,34 +168,42 @@ public static class Program
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         var user = command.User;
 
-        var appealRecord = await dbContext.Set<AppealRecord>()
-            .FirstOrDefaultAsync(a => a.DiscordId == user.Id);
-
-        var wins = appealRecord?.AppealWins ?? 0;
-        var attempts = appealRecord?.AppealAttempts ?? 0;
-        var rate = attempts > 0 ? (int)Math.Round((double)wins / attempts * 100) : 0;
+        var appealService = new AppealService(dbContext, _randomProvider);
+        var result = await appealService.GetAppealStats(user.Id);
 
         stopwatch.Stop();
         _logger!.Information(
             "Appeal count query for {DiscordId} completed in {ElapsedMs}ms",
             user.Id, stopwatch.ElapsedMilliseconds);
 
+        if (result.IsFailure)
+        {
+            _logger.Error("Appeal count failed for {DiscordId}: {Error}", user.Id, result.Error);
+            return;
+        }
+
+        var stats = result.Value;
+
         string message;
-        if (attempts == 0)
+        if (stats.Attempts == 0)
         {
             message = $"{user.Mention}, you haven't even tried to appeal yet. Coward.";
         }
-        else if (wins == 0)
+        else if (stats.Wins == 0)
         {
-            message = $"{user.Mention}, you've won 0 out of {attempts} appeals (0%). Yikes.";
+            message = $"{user.Mention}, you've won 0 out of {stats.Attempts} appeals (0%). Yikes.";
         }
-        else if (rate < 30)
+        else if (stats.WinRate < 30)
         {
-            message = $"{user.Mention}, you've won {wins} out of {attempts} appeals ({rate}%). The system is clearly rigged.";
+            message = $"{user.Mention}, you've won {stats.Wins} out of {stats.Attempts} appeals ({stats.WinRate}%). This bot sucks.";
+        }
+        else if (stats.WinRate > 64)
+        {
+            message = $"{user.Mention}, you've won {stats.Wins} out of {stats.Attempts} appeals ({stats.WinRate}%). The bot smiles on you";
         }
         else
         {
-            message = $"{user.Mention}, you've won {wins} out of {attempts} appeals ({rate}%). Not bad... or is it?";
+            message = $"{user.Mention}, you've won {stats.Wins} out of {stats.Attempts} appeals ({stats.WinRate}%).";
         }
 
         await command.RespondAsync(message);
@@ -228,22 +212,26 @@ public static class Program
     private static async Task HandleWhyReportedCommand(ReportedDbContext dbContext, SocketSlashCommand command)
     {
         IUser? user = command.User;
+        var reportingService = new ReportingService(dbContext, _randomProvider);
+        var result = await reportingService.GetReportsByReason(user.Id);
 
-        var reportsByReason = dbContext.Set<UserReport>().Where(ur => ur.DiscordId == user.Id)
-            .GroupBy(ur => ur.Description);
+        if (result.IsFailure)
+        {
+            _logger!.Error("Why-reported failed for {DiscordId}: {Error}", user.Id, result.Error);
+            return;
+        }
 
         var stringBuilder = new StringBuilder();
-        foreach (var reportGroup in reportsByReason)
+        foreach (var group in result.Value)
         {
-            var count = reportGroup.Count();
-            if (string.IsNullOrWhiteSpace(reportGroup.Key))
+            if (group.GroupKey == "")
             {
-                stringBuilder.AppendLine($"Unknown Reason: {count} {(count > 1 ? "times" : "time")}");
+                stringBuilder.AppendLine($"Unknown Reason: {group.Count} {(group.Count > 1 ? "times" : "time")}");
             }
             else
             {
                 stringBuilder.AppendLine(
-                    $"{Constants.ReportReasons[reportGroup.Key]},: {count} {(count > 1 ? "times" : "time")}");
+                    $"{group.DisplayName},: {group.Count} {(group.Count > 1 ? "times" : "time")}");
             }
         }
 
@@ -274,16 +262,19 @@ public static class Program
     private static async Task HandleWhoReportedCommand(ReportedDbContext dbContext, SocketSlashCommand command)
     {
         IUser? user = command.User;
+        var reportingService = new ReportingService(dbContext, _randomProvider);
+        var result = await reportingService.GetReportsByReporter(user.Id);
 
-        var reportsByUser = dbContext.Set<UserReport>().Where(ur => ur.DiscordId == user.Id)
-            .GroupBy(ur => ur.InitiatedDiscordName);
+        if (result.IsFailure)
+        {
+            _logger!.Error("Who-reported failed for {DiscordId}: {Error}", user.Id, result.Error);
+            return;
+        }
 
         var stringBuilder = new StringBuilder();
-        foreach (var userReports in reportsByUser)
+        foreach (var group in result.Value)
         {
-            var count = userReports.Count();
-
-            stringBuilder.AppendLine($"{userReports.Key}: {count} {(count > 1 ? "times" : "time")}");
+            stringBuilder.AppendLine($"{group.DisplayName}: {group.Count} {(group.Count > 1 ? "times" : "time")}");
         }
 
         var builder = new EmbedBuilder();
@@ -302,52 +293,32 @@ public static class Program
         IUser? initiatedUser = command.User;
         var reason = (string)command.Data.Options.First(o => o.Name == "reason").Value;
 
-        var userReports = dbContext.Set<UserReport>().Where(t => t.DiscordId == guildUser.Id);
+        var reportingService = new ReportingService(dbContext, _randomProvider);
+        var result = await reportingService.CreateReport(
+            guildUser.Id, guildUser.Mention,
+            initiatedUser.Id, initiatedUser.Mention,
+            reason);
 
-        var random = _random!.Next(0, 100);
-        if (random < 5)
+        if (result.IsFailure)
         {
-            for (var i = 0; i < 5; i++)
-            {
-                var userReport = new UserReport(initiatedUser.Id,
-                    initiatedUser.Mention, initiatedUser.Id,
-                    initiatedUser.Mention,
-                    true,
-                    reason);
-                dbContext.Set<UserReport>().Add(userReport);
-            }
+            _logger!.Error("Report failed: {Error}", result.Error);
+            return;
+        }
 
-            await dbContext.SaveChangesAsync();
+        var outcome = result.Value;
 
+        if (outcome.IsSelfReport)
+        {
             await command.RespondAsync(
                 $"Oof, {initiatedUser.Mention} has hurt themselves in their confusion and has reported themselves 5 times");
         }
         else
         {
-            var criticalRoll = _random!.Next(0, 100);
-            int times = criticalRoll == 1 ? 2 : 1;
-            var count = await userReports.CountAsync();
-            var countOfThisType = await userReports.CountAsync(t => t.Description == reason);
-            for (var i = 0; i < times; i++)
-            {
-
-                var userReport = new UserReport(guildUser.Id,
-                    guildUser.Mention,
-                    initiatedUser.Id,
-                    initiatedUser.Mention,
-                    false,
-                    reason);
-                dbContext.Set<UserReport>().Add(userReport);
-
-                await dbContext.SaveChangesAsync();
-            }
-
-            var reasonExplained = Constants.ReportReasons[reason];
             await command.RespondAsync(
-                $"{guildUser.Mention} has been reported for {reasonExplained}" +
-                $"{Environment.NewLine}They have been reported for {reasonExplained} {countOfThisType + times} {(countOfThisType > 0 ? "times" : "time")}" +
-                $"{Environment.NewLine}They have been reported {count + times} {(count > 0 ? "times" : "time")}.");
-            if (criticalRoll == 1)
+                $"{guildUser.Mention} has been reported for {outcome.ReasonDescription}" +
+                $"{Environment.NewLine}They have been reported for {outcome.ReasonDescription} {outcome.TotalReportsOfThisType} {(outcome.TotalReportsOfThisType > 1 ? "times" : "time")}" +
+                $"{Environment.NewLine}They have been reported {outcome.TotalReportsOnTarget} {(outcome.TotalReportsOnTarget > 1 ? "times" : "time")}.");
+            if (outcome.IsCriticalHit)
             {
                 await command.FollowupAsync($"Critical hit! {guildUser.Mention} has been reported twice!");
             }
