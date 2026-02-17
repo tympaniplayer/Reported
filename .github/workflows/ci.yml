@@ -1,10 +1,12 @@
 name: CI
 
 on:
-  push:
-    branches: [ main ]
   pull_request:
     branches: [ main ]
+
+permissions:
+  contents: read
+  pull-requests: write
 
 jobs:
   test:
@@ -14,14 +16,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Run tests in Docker
-        uses: docker/build-push-action@v6
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
         with:
-          context: .
-          target: test
-          push: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          dotnet-version: '9.0.x'
+
+      - name: Test with coverage
+        run: dotnet test --configuration Release --verbosity normal --collect:"XPlat Code Coverage" --results-directory ./TestResults
+
+      - name: Generate coverage report
+        uses: danielpalme/ReportGenerator-GitHub-Action@v5
+        with:
+          reports: TestResults/**/coverage.cobertura.xml
+          targetdir: CoverageReport
+          reporttypes: MarkdownSummaryGithub
+
+      - name: Post coverage to Actions summary
+        run: cat CoverageReport/SummaryGithub.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Post coverage to PR comment
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          recreate: true
+          path: CoverageReport/SummaryGithub.md
