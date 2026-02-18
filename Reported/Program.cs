@@ -16,7 +16,7 @@ public static class Program
 {
     private static DiscordSocketClient _client = null!;
     private const string AxiomApiUrl = "https://api.axiom.co/v1/datasets";
-    private static ILogger? _logger;
+    private static ILogger _logger = null!;
     private static IRandomProvider _randomProvider = null!;
 
     public static async Task Main()
@@ -117,7 +117,7 @@ public static class Program
                 await HandleAppealCount(dbContext, command);
                 break;
             default:
-                _logger!.Error($"Unexpected command name received: {command.CommandName} Investigate");
+                _logger.Error($"Unexpected command name received: {command.CommandName} Investigate");
                 break;
         }
     }
@@ -130,7 +130,7 @@ public static class Program
 
         if (result.IsFailure)
         {
-            _logger!.Error("Appeal failed for {DiscordId}: {Error}", user.Id, result.Error);
+            _logger.Error("Appeal failed for {DiscordId}: {Error}", user.Id, result.Error);
             return;
         }
 
@@ -143,7 +143,7 @@ public static class Program
         }
         else if (outcome.Won)
         {
-            _logger!.Information(
+            _logger.Information(
                 "Appeal outcome for {DiscordId}: {AppealOutcome}, total wins: {TotalWins}, total attempts: {TotalAttempts}",
                 user.Id, "won", outcome.AppealWins, outcome.AppealAttempts);
 
@@ -154,7 +154,7 @@ public static class Program
         }
         else
         {
-            _logger!.Information(
+            _logger.Information(
                 "Appeal outcome for {DiscordId}: {AppealOutcome}, total wins: {TotalWins}, total attempts: {TotalAttempts}",
                 user.Id, "lost", outcome.AppealWins, outcome.AppealAttempts);
 
@@ -172,7 +172,7 @@ public static class Program
         var result = await appealService.GetAppealStats(user.Id);
 
         stopwatch.Stop();
-        _logger!.Information(
+        _logger.Information(
             "Appeal count query for {DiscordId} completed in {ElapsedMs}ms",
             user.Id, stopwatch.ElapsedMilliseconds);
 
@@ -217,7 +217,7 @@ public static class Program
 
         if (result.IsFailure)
         {
-            _logger!.Error("Why-reported failed for {DiscordId}: {Error}", user.Id, result.Error);
+            _logger.Error("Why-reported failed for {DiscordId}: {Error}", user.Id, result.Error);
             return;
         }
 
@@ -267,7 +267,7 @@ public static class Program
 
         if (result.IsFailure)
         {
-            _logger!.Error("Who-reported failed for {DiscordId}: {Error}", user.Id, result.Error);
+            _logger.Error("Who-reported failed for {DiscordId}: {Error}", user.Id, result.Error);
             return;
         }
 
@@ -301,7 +301,7 @@ public static class Program
 
         if (result.IsFailure)
         {
-            _logger!.Error("Report failed: {Error}", result.Error);
+            _logger.Error("Report failed: {Error}", result.Error);
             return;
         }
 
