@@ -14,29 +14,29 @@ namespace Reported;
 
 public static class Program
 {
-    private static DiscordSocketClient _client = null!;
     private const string AxiomApiUrl = "https://api.axiom.co/v1/datasets";
-    private static ILogger _logger = null!;
-    private static IRandomProvider _randomProvider = null!;
 
     public static async Task Main()
     {
-        _logger = await InitializeLogger();
+        var logger = await InitializeLogger();
         await InitializeDatabase();
-        _randomProvider = new RandomProvider();
+        var randomProvider = new RandomProvider();
 
         var token = Environment.GetEnvironmentVariable("DISCORD_TOKEN")
                     ?? throw new InvalidOperationException("Discord token environment variable not set");
-        _client = new DiscordSocketClient();
-        _client.Log += message =>
+        var client = new DiscordSocketClient();
+        
+        var app = new BotApplication(logger, randomProvider, client);
+        
+        client.Log += message =>
         {
-            _logger.Information(message.ToString());
+            app.Logger.Information(message.ToString());
             return Task.CompletedTask;
         };
-        await _client.LoginAsync(TokenType.Bot, token);
-        await _client.StartAsync();
-        _client.Ready += ClientReady;
-        _client.SlashCommandExecuted += SlashCommandHandler;
+        await client.LoginAsync(TokenType.Bot, token);
+        await client.StartAsync();
+        client.Ready += () => ClientReady(app);
+        client.SlashCommandExecuted += command => SlashCommandHandler(app, command);
 
         // Block this task until the program is closed.
         await Task.Delay(-1);
@@ -75,16 +75,16 @@ public static class Program
         await ReportedDbContext.InitializeDatabaseAsync();
     }
 
-    private static async Task ClientReady()
+    private static async Task ClientReady(BotApplication app)
     {
         try
         {
-            await _client.CreateGlobalApplicationCommandAsync(Commands.ReportCommand());
-            await _client.CreateGlobalApplicationCommandAsync(Commands.WhoReportedCommand());
-            await _client.CreateGlobalApplicationCommandAsync(Commands.AliasListCommand());
-            await _client.CreateGlobalApplicationCommandAsync(Commands.WhyReportedCommand());
-            await _client.CreateGlobalApplicationCommandAsync(Commands.AppealCommand());
-            await _client.CreateGlobalApplicationCommandAsync(Commands.AppealCountCommand());
+            await app.Client.CreateGlobalApplicationCommandAsync(Commands.ReportCommand());
+            await app.Client.CreateGlobalApplicationCommandAsync(Commands.WhoReportedCommand());
+            await app.Client.CreateGlobalApplicationCommandAsync(Commands.AliasListCommand());
+            await app.Client.CreateGlobalApplicationCommandAsync(Commands.WhyReportedCommand());
+            await app.Client.CreateGlobalApplicationCommandAsync(Commands.AppealCommand());
+            await app.Client.CreateGlobalApplicationCommandAsync(Commands.AppealCountCommand());
         }
         catch (HttpException exception)
         {
@@ -93,44 +93,44 @@ public static class Program
         }
     }
 
-    private static async Task SlashCommandHandler(SocketSlashCommand command)
+    private static async Task SlashCommandHandler(BotApplication app, SocketSlashCommand command)
     {
         await using var dbContext = new ReportedDbContext();
         switch (command.CommandName)
         {
             case "report":
-                await HandleReportCommand(dbContext, command);
+                await HandleReportCommand(app, dbContext, command);
                 break;
             case "who-reported":
-                await HandleWhoReportedCommand(dbContext, command);
+                await HandleWhoReportedCommand(app, dbContext, command);
                 break;
             case "alias-list":
                 await HandleAliasListCommand(command);
                 break;
             case "why-reported":
-                await HandleWhyReportedCommand(dbContext, command);
+                await HandleWhyReportedCommand(app, dbContext, command);
                 break;
             case "appeal":
-                await HandleAppeal(dbContext, command);
+                await HandleAppeal(app, dbContext, command);
                 break;
             case "appeal-count":
-                await HandleAppealCount(dbContext, command);
+                await HandleAppealCount(app, dbContext, command);
                 break;
             default:
-                _logger.Error($"Unexpected command name received: {command.CommandName} Investigate");
+                app.Logger.Error($"Unexpected command name received: {command.CommandName} Investigate");
                 break;
         }
     }
 
-    private static async Task HandleAppeal(ReportedDbContext dbContext, SocketSlashCommand command)
+    private static async Task HandleAppeal(BotApplication app, ReportedDbContext dbContext, SocketSlashCommand command)
     {
         var user = command.User;
-        var appealService = new AppealService(dbContext, _randomProvider);
+        var appealService = new AppealService(dbContext, app.RandomProvider);
         var result = await appealService.ProcessAppeal(user.Id, user.Mention);
 
         if (result.IsFailure)
         {
-            _logger.Error("Appeal failed for {DiscordId}: {Error}", user.Id, result.Error);
+            app.Logger.Error("Appeal failed for {DiscordId}: {Error}", user.Id, result.Error);
             return;
         }
 
@@ -143,7 +143,7 @@ public static class Program
         }
         else if (outcome.Won)
         {
-            _logger.Information(
+            app.Logger.Information(
                 "Appeal outcome for {DiscordId}: {AppealOutcome}, total wins: {TotalWins}, total attempts: {TotalAttempts}",
                 user.Id, "won", outcome.AppealWins, outcome.AppealAttempts);
 
@@ -154,7 +154,7 @@ public static class Program
         }
         else
         {
-            _logger.Information(
+            app.Logger.Information(
                 "Appeal outcome for {DiscordId}: {AppealOutcome}, total wins: {TotalWins}, total attempts: {TotalAttempts}",
                 user.Id, "lost", outcome.AppealWins, outcome.AppealAttempts);
 
@@ -163,22 +163,22 @@ public static class Program
         }
     }
 
-    private static async Task HandleAppealCount(ReportedDbContext dbContext, SocketSlashCommand command)
+    private static async Task HandleAppealCount(BotApplication app, ReportedDbContext dbContext, SocketSlashCommand command)
     {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         var user = command.User;
 
-        var appealService = new AppealService(dbContext, _randomProvider);
+        var appealService = new AppealService(dbContext, app.RandomProvider);
         var result = await appealService.GetAppealStats(user.Id);
 
         stopwatch.Stop();
-        _logger.Information(
+        app.Logger.Information(
             "Appeal count query for {DiscordId} completed in {ElapsedMs}ms",
             user.Id, stopwatch.ElapsedMilliseconds);
 
         if (result.IsFailure)
         {
-            _logger.Error("Appeal count failed for {DiscordId}: {Error}", user.Id, result.Error);
+            app.Logger.Error("Appeal count failed for {DiscordId}: {Error}", user.Id, result.Error);
             return;
         }
 
@@ -209,15 +209,15 @@ public static class Program
         await command.RespondAsync(message);
     }
 
-    private static async Task HandleWhyReportedCommand(ReportedDbContext dbContext, SocketSlashCommand command)
+    private static async Task HandleWhyReportedCommand(BotApplication app, ReportedDbContext dbContext, SocketSlashCommand command)
     {
         IUser? user = command.User;
-        var reportingService = new ReportingService(dbContext, _randomProvider);
+        var reportingService = new ReportingService(dbContext, app.RandomProvider);
         var result = await reportingService.GetReportsByReason(user.Id);
 
         if (result.IsFailure)
         {
-            _logger.Error("Why-reported failed for {DiscordId}: {Error}", user.Id, result.Error);
+            app.Logger.Error("Why-reported failed for {DiscordId}: {Error}", user.Id, result.Error);
             return;
         }
 
@@ -259,15 +259,15 @@ public static class Program
         await command.RespondAsync(embed: builder.Build());
     }
 
-    private static async Task HandleWhoReportedCommand(ReportedDbContext dbContext, SocketSlashCommand command)
+    private static async Task HandleWhoReportedCommand(BotApplication app, ReportedDbContext dbContext, SocketSlashCommand command)
     {
         IUser? user = command.User;
-        var reportingService = new ReportingService(dbContext, _randomProvider);
+        var reportingService = new ReportingService(dbContext, app.RandomProvider);
         var result = await reportingService.GetReportsByReporter(user.Id);
 
         if (result.IsFailure)
         {
-            _logger.Error("Who-reported failed for {DiscordId}: {Error}", user.Id, result.Error);
+            app.Logger.Error("Who-reported failed for {DiscordId}: {Error}", user.Id, result.Error);
             return;
         }
 
@@ -287,13 +287,13 @@ public static class Program
         await command.RespondAsync(embed: builder.Build(), ephemeral: true);
     }
 
-    private static async Task HandleReportCommand(ReportedDbContext dbContext, SocketSlashCommand command)
+    private static async Task HandleReportCommand(BotApplication app, ReportedDbContext dbContext, SocketSlashCommand command)
     {
         var guildUser = (IUser)command.Data.Options.First().Value;
         IUser? initiatedUser = command.User;
         var reason = (string)command.Data.Options.First(o => o.Name == "reason").Value;
 
-        var reportingService = new ReportingService(dbContext, _randomProvider);
+        var reportingService = new ReportingService(dbContext, app.RandomProvider);
         var result = await reportingService.CreateReport(
             guildUser.Id, guildUser.Mention,
             initiatedUser.Id, initiatedUser.Mention,
@@ -301,7 +301,7 @@ public static class Program
 
         if (result.IsFailure)
         {
-            _logger.Error("Report failed: {Error}", result.Error);
+            app.Logger.Error("Report failed: {Error}", result.Error);
             return;
         }
 
