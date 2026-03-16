@@ -5,16 +5,10 @@ using Reported.Persistence;
 
 namespace Reported.Services;
 
-public sealed class ReportingService
+public sealed class ReportingService(ReportedDbContext dbContext, IRandomProvider random)
 {
-    private readonly ReportedDbContext _dbContext;
-    private readonly IRandomProvider _random;
-
-    public ReportingService(ReportedDbContext dbContext, IRandomProvider random)
-    {
-        _dbContext = dbContext;
-        _random = random;
-    }
+    private readonly ReportedDbContext _dbContext = dbContext;
+    private readonly IRandomProvider _random = random;
 
     public async Task<Result<ReportOutcome>> CreateReport(
         ulong targetDiscordId,

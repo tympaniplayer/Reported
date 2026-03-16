@@ -136,7 +136,24 @@ public static class Program
 
         var outcome = result.Value;
 
-        if (outcome.HadNoReports)
+        if (outcome.RejectionReason != AppealRejectionReason.None)
+        {
+            _logger!.Information(
+                "Appeal rejected for {DiscordId}: {RejectionReason}",
+                user.Id, outcome.RejectionReason);
+
+            var rejectionMessage = outcome.RejectionReason switch
+            {
+                AppealRejectionReason.AllAppealed =>
+                    $"{user.Mention}, you've already appealed all your reports. No take-backsies :lock:",
+                AppealRejectionReason.OnlySelfReports =>
+                    $"{user.Mention}, you can't appeal reports you gave yourself. That's on you :mirror:",
+                _ => $"{user.Mention}, no eligible reports to appeal."
+            };
+
+            await command.RespondAsync(rejectionMessage);
+        }
+        else if (outcome.HadNoReports)
         {
             await command.RespondAsync(
                 $"{user.Mention}, LOL you didn't have any reports to appeal. Here is 10 to get you started");
