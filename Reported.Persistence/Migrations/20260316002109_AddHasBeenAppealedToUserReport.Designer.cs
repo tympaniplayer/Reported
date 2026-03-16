@@ -10,7 +10,7 @@ using Reported.Persistence;
 namespace Reported.Persistence.Migrations
 {
     [DbContext(typeof(ReportedDbContext))]
-    [Migration("20260316000843_AddHasBeenAppealedToUserReport")]
+    [Migration("20260316002109_AddHasBeenAppealedToUserReport")]
     partial class AddHasBeenAppealedToUserReport
     {
         /// <inheritdoc />

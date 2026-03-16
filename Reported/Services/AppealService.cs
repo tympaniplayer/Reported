@@ -55,21 +55,15 @@ public sealed class AppealService
                 }
 
                 // Has reports but none eligible — determine rejection reason
-                var hasUnappealedNonSelfReports = await _dbContext.Set<UserReport>()
+                var hasUnappealedSelfReports = await _dbContext.Set<UserReport>()
                     .AnyAsync(r =>
                         r.DiscordId == userDiscordId
                         && !r.HasBeenAppealed
-                        && r.DiscordId != r.InitiatedUserDiscordId);
+                        && r.DiscordId == r.InitiatedUserDiscordId);
 
-                var rejectionReason = hasUnappealedNonSelfReports
-                    ? AppealRejectionReason.None // shouldn't happen, but safe fallback
-                    : await _dbContext.Set<UserReport>()
-                        .AnyAsync(r =>
-                            r.DiscordId == userDiscordId
-                            && !r.HasBeenAppealed
-                            && r.DiscordId == r.InitiatedUserDiscordId)
-                        ? AppealRejectionReason.OnlySelfReports
-                        : AppealRejectionReason.AllAppealed;
+                var rejectionReason = hasUnappealedSelfReports
+                    ? AppealRejectionReason.OnlySelfReports
+                    : AppealRejectionReason.AllAppealed;
 
                 return Result.Success(new AppealOutcome(
                     Won: false,
@@ -96,7 +90,6 @@ public sealed class AppealService
                 // Win — remove the report
                 appealRecord.AppealWins++;
                 appealRecord.AppealAttempts++;
-                report.HasBeenAppealed = true;
                 _dbContext.Set<UserReport>().Remove(report);
                 await _dbContext.SaveChangesAsync();
 
