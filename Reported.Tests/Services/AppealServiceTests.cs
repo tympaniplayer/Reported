@@ -114,7 +114,7 @@ public sealed class AppealServiceTests
     }
 
     [Fact]
-    public async Task ProcessAppeal_Win_MarksReportAsAppealed()
+    public async Task ProcessAppeal_Win_ReturnsNoRejectionReason()
     {
         using var factory = TestDbContextFactory.Create();
         var db = factory.Context;
@@ -127,8 +127,28 @@ public sealed class AppealServiceTests
 
         Assert.True(result.IsSuccess);
         Assert.True(result.Value.Won);
-        // Report is deleted on win, so no report to check HasBeenAppealed on
         Assert.Equal(AppealRejectionReason.None, result.Value.RejectionReason);
+    }
+
+    [Fact]
+    public async Task ProcessAppeal_WinThenAppealAgain_ReturnsAllAppealedRejection()
+    {
+        using var factory = TestDbContextFactory.Create();
+        var db = factory.Context;
+
+        db.Set<UserReport>().Add(new UserReport(100UL, "User", 200UL, "Reporter", false, "NA"));
+        await db.SaveChangesAsync();
+
+        // First appeal: win (report deleted)
+        var service = new AppealService(db, new FakeRandomProvider(50));
+        var result1 = await service.ProcessAppeal(100UL, "User");
+        Assert.True(result1.Value.Won);
+
+        // Second appeal: no eligible reports remain
+        var result2 = await service.ProcessAppeal(100UL, "User");
+        Assert.True(result2.IsSuccess);
+        Assert.True(result2.Value.HadNoReports);
+        Assert.Equal(10, result2.Value.PenaltyReportsAdded);
     }
 
     [Fact]
