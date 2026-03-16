@@ -5,4 +5,5 @@ public sealed record AppealOutcome(
     int AppealWins,
     int AppealAttempts,
     bool HadNoReports,
-    int PenaltyReportsAdded);
+    int PenaltyReportsAdded,
+    AppealRejectionReason RejectionReason = AppealRejectionReason.None);

@@ -5,7 +5,8 @@ public sealed class UserReport(ulong discordId,
     ulong initiatedUserDiscordId,
     string initiatedDiscordName,
     bool confused = false,
-    string? description = null)
+    string? description = null,
+    bool hasBeenAppealed = false)
 {
     public int Id { get; set; }
     public ulong DiscordId { get; set; } = discordId;
@@ -14,4 +15,5 @@ public sealed class UserReport(ulong discordId,
     public string InitiatedDiscordName { get; set; } = initiatedDiscordName;
     public bool Confused { get; set; } = confused;
     public string? Description { get; set; } = description;
+    public bool HasBeenAppealed { get; set; } = hasBeenAppealed;
 }

@@ -114,6 +114,170 @@ public sealed class AppealServiceTests
     }
 
     [Fact]
+    public async Task ProcessAppeal_Win_MarksReportAsAppealed()
+    {
+        using var factory = TestDbContextFactory.Create();
+        var db = factory.Context;
+
+        db.Set<UserReport>().Add(new UserReport(100UL, "User", 200UL, "Reporter", false, "NA"));
+        await db.SaveChangesAsync();
+
+        var service = new AppealService(db, new FakeRandomProvider(50));
+        var result = await service.ProcessAppeal(100UL, "User");
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value.Won);
+        // Report is deleted on win, so no report to check HasBeenAppealed on
+        Assert.Equal(AppealRejectionReason.None, result.Value.RejectionReason);
+    }
+
+    [Fact]
+    public async Task ProcessAppeal_Loss_MarksReportAsAppealed()
+    {
+        using var factory = TestDbContextFactory.Create();
+        var db = factory.Context;
+
+        db.Set<UserReport>().Add(new UserReport(100UL, "User", 200UL, "Reporter", false, "NA"));
+        await db.SaveChangesAsync();
+
+        var service = new AppealService(db, new FakeRandomProvider(49));
+        var result = await service.ProcessAppeal(100UL, "User");
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value.Won);
+
+        var reports = await db.Set<UserReport>().ToListAsync();
+        // Original report should be marked as appealed
+        var original = reports.First(r => r.InitiatedUserDiscordId == 200UL);
+        Assert.True(original.HasBeenAppealed);
+    }
+
+    [Fact]
+    public async Task ProcessAppeal_AllReportsAppealed_ReturnsAllAppealedRejection()
+    {
+        using var factory = TestDbContextFactory.Create();
+        var db = factory.Context;
+
+        db.Set<UserReport>().Add(new UserReport(100UL, "User", 200UL, "Reporter", false, "NA", hasBeenAppealed: true));
+        await db.SaveChangesAsync();
+
+        var service = new AppealService(db, new FakeRandomProvider());
+        var result = await service.ProcessAppeal(100UL, "User");
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value.Won);
+        Assert.Equal(AppealRejectionReason.AllAppealed, result.Value.RejectionReason);
+    }
+
+    [Fact]
+    public async Task ProcessAppeal_MixedAppealedAndUnappealed_SelectsOnlyUnappealed()
+    {
+        using var factory = TestDbContextFactory.Create();
+        var db = factory.Context;
+
+        // Two appealed, one unappealed
+        db.Set<UserReport>().Add(new UserReport(100UL, "User", 200UL, "Reporter", false, "NA", hasBeenAppealed: true));
+        db.Set<UserReport>().Add(new UserReport(100UL, "User", 200UL, "Reporter", false, "VA", hasBeenAppealed: true));
+        db.Set<UserReport>().Add(new UserReport(100UL, "User", 200UL, "Reporter", false, "CH"));
+        await db.SaveChangesAsync();
+
+        // Win — removes the unappealed report
+        var service = new AppealService(db, new FakeRandomProvider(50));
+        var result = await service.ProcessAppeal(100UL, "User");
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value.Won);
+        Assert.Equal(AppealRejectionReason.None, result.Value.RejectionReason);
+
+        // Only the two appealed reports should remain
+        var remaining = await db.Set<UserReport>().ToListAsync();
+        Assert.Equal(2, remaining.Count);
+        Assert.All(remaining, r => Assert.True(r.HasBeenAppealed));
+    }
+
+    [Fact]
+    public async Task ProcessAppeal_Loss_PenaltyReportIsPreMarkedAsAppealed()
+    {
+        using var factory = TestDbContextFactory.Create();
+        var db = factory.Context;
+
+        db.Set<UserReport>().Add(new UserReport(100UL, "User", 200UL, "Reporter", false, "NA"));
+        await db.SaveChangesAsync();
+
+        var service = new AppealService(db, new FakeRandomProvider(49));
+        var result = await service.ProcessAppeal(100UL, "User");
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value.Won);
+
+        // The penalty report (self-initiated) should be marked as appealed
+        var reports = await db.Set<UserReport>().ToListAsync();
+        var penalty = reports.First(r => r.InitiatedUserDiscordId == 100UL);
+        Assert.True(penalty.HasBeenAppealed);
+    }
+
+    [Fact]
+    public async Task ProcessAppeal_OnlySelfReports_ReturnsOnlySelfReportsRejection()
+    {
+        using var factory = TestDbContextFactory.Create();
+        var db = factory.Context;
+
+        // Self-report: reporter and reported are the same user
+        db.Set<UserReport>().Add(new UserReport(100UL, "User", 100UL, "User", false, "NA"));
+        await db.SaveChangesAsync();
+
+        var service = new AppealService(db, new FakeRandomProvider());
+        var result = await service.ProcessAppeal(100UL, "User");
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value.Won);
+        Assert.Equal(AppealRejectionReason.OnlySelfReports, result.Value.RejectionReason);
+    }
+
+    [Fact]
+    public async Task ProcessAppeal_MixedSelfAndOtherReports_SelectsOnlyOtherInitiated()
+    {
+        using var factory = TestDbContextFactory.Create();
+        var db = factory.Context;
+
+        // Self-report (not eligible)
+        db.Set<UserReport>().Add(new UserReport(100UL, "User", 100UL, "User", false, "NA"));
+        // Other-initiated report (eligible)
+        db.Set<UserReport>().Add(new UserReport(100UL, "User", 200UL, "Reporter", false, "VA"));
+        await db.SaveChangesAsync();
+
+        var service = new AppealService(db, new FakeRandomProvider(50));
+        var result = await service.ProcessAppeal(100UL, "User");
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value.Won);
+        Assert.Equal(AppealRejectionReason.None, result.Value.RejectionReason);
+
+        // Only the self-report should remain
+        var remaining = await db.Set<UserReport>().ToListAsync();
+        Assert.Single(remaining);
+        Assert.Equal(100UL, remaining[0].InitiatedUserDiscordId);
+    }
+
+    [Fact]
+    public async Task ProcessAppeal_BackfireReport_IsNotEligibleForAppeal()
+    {
+        using var factory = TestDbContextFactory.Create();
+        var db = factory.Context;
+
+        // Backfire report: self-report with Confused = true
+        db.Set<UserReport>().Add(new UserReport(100UL, "User", 100UL, "User", true, "NA"));
+        await db.SaveChangesAsync();
+
+        var service = new AppealService(db, new FakeRandomProvider());
+        var result = await service.ProcessAppeal(100UL, "User");
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value.Won);
+        Assert.Equal(AppealRejectionReason.OnlySelfReports, result.Value.RejectionReason);
+    }
+
+    [Fact]
     public async Task GetAppealStats_NoRecord_ReturnsZeros()
     {
         using var factory = TestDbContextFactory.Create();

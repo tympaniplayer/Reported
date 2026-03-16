@@ -9,5 +9,6 @@ public sealed class UserReportConfiguration: IEntityTypeConfiguration<UserReport
     {
         builder.HasKey(x => x.Id);
         builder.HasIndex(i => i.DiscordId);
+        builder.Property(x => x.HasBeenAppealed).HasDefaultValue(true);
     }
 }

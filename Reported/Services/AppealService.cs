@@ -20,28 +20,64 @@ public sealed class AppealService
     {
         try
         {
+            // Find an eligible report: unappealed and not self-initiated
             var report = await _dbContext.Set<UserReport>()
-                .FirstOrDefaultAsync(r => r.DiscordId == userDiscordId);
+                .FirstOrDefaultAsync(r =>
+                    r.DiscordId == userDiscordId
+                    && !r.HasBeenAppealed
+                    && r.DiscordId != r.InitiatedUserDiscordId);
 
             if (report is null)
             {
-                // No reports — penalty: add 10 "DU" reports, do NOT create AppealRecord
-                for (var i = 0; i < 10; i++)
+                // Determine why no eligible report was found
+                var hasAnyReports = await _dbContext.Set<UserReport>()
+                    .AnyAsync(r => r.DiscordId == userDiscordId);
+
+                if (!hasAnyReports)
                 {
-                    _dbContext.Set<UserReport>().Add(new UserReport(
-                        userDiscordId, userName,
-                        userDiscordId, userName,
-                        true, "DU"));
+                    // No reports at all — penalty: add 10 "DU" reports, do NOT create AppealRecord
+                    for (var i = 0; i < 10; i++)
+                    {
+                        _dbContext.Set<UserReport>().Add(new UserReport(
+                            userDiscordId, userName,
+                            userDiscordId, userName,
+                            true, "DU"));
+                    }
+
+                    await _dbContext.SaveChangesAsync();
+
+                    return Result.Success(new AppealOutcome(
+                        Won: false,
+                        AppealWins: 0,
+                        AppealAttempts: 0,
+                        HadNoReports: true,
+                        PenaltyReportsAdded: 10));
                 }
 
-                await _dbContext.SaveChangesAsync();
+                // Has reports but none eligible — determine rejection reason
+                var hasUnappealedNonSelfReports = await _dbContext.Set<UserReport>()
+                    .AnyAsync(r =>
+                        r.DiscordId == userDiscordId
+                        && !r.HasBeenAppealed
+                        && r.DiscordId != r.InitiatedUserDiscordId);
+
+                var rejectionReason = hasUnappealedNonSelfReports
+                    ? AppealRejectionReason.None // shouldn't happen, but safe fallback
+                    : await _dbContext.Set<UserReport>()
+                        .AnyAsync(r =>
+                            r.DiscordId == userDiscordId
+                            && !r.HasBeenAppealed
+                            && r.DiscordId == r.InitiatedUserDiscordId)
+                        ? AppealRejectionReason.OnlySelfReports
+                        : AppealRejectionReason.AllAppealed;
 
                 return Result.Success(new AppealOutcome(
                     Won: false,
                     AppealWins: 0,
                     AppealAttempts: 0,
-                    HadNoReports: true,
-                    PenaltyReportsAdded: 10));
+                    HadNoReports: false,
+                    PenaltyReportsAdded: 0,
+                    RejectionReason: rejectionReason));
             }
 
             var coinToss = _random.Next(0, 100);
@@ -57,9 +93,10 @@ public sealed class AppealService
 
             if (coinToss > 49)
             {
-                // Win
+                // Win — remove the report
                 appealRecord.AppealWins++;
                 appealRecord.AppealAttempts++;
+                report.HasBeenAppealed = true;
                 _dbContext.Set<UserReport>().Remove(report);
                 await _dbContext.SaveChangesAsync();
 
@@ -72,13 +109,15 @@ public sealed class AppealService
             }
             else
             {
-                // Loss — add 1 penalty report
+                // Loss — mark as appealed and add 1 penalty report (pre-marked as appealed)
                 appealRecord.AppealAttempts++;
+                report.HasBeenAppealed = true;
 
                 _dbContext.Set<UserReport>().Add(new UserReport(
                     userDiscordId, userName,
                     userDiscordId, userName,
-                    false, report.Description));
+                    false, report.Description,
+                    hasBeenAppealed: true));
 
                 await _dbContext.SaveChangesAsync();
 
