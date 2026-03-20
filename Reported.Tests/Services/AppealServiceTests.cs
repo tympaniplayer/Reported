@@ -9,7 +9,7 @@ namespace Reported.Tests.Services;
 public sealed class AppealServiceTests
 {
     [Fact]
-    public async Task ProcessAppeal_Win_RemovesReportAndTracksStats()
+    public async Task ProcessAppeal_Win_MarksReportAsAppealedAndTracksStats()
     {
         using var factory = TestDbContextFactory.Create();
         var db = factory.Context;
@@ -30,8 +30,10 @@ public sealed class AppealServiceTests
         Assert.Equal(1, result.Value.AppealAttempts);
         Assert.Equal(0, result.Value.PenaltyReportsAdded);
 
-        var reportCount = await db.Set<UserReport>().CountAsync();
-        Assert.Equal(0, reportCount);
+        // Report is preserved but marked as appealed
+        var reports = await db.Set<UserReport>().ToListAsync();
+        Assert.Single(reports);
+        Assert.True(reports[0].HasBeenAppealed);
     }
 
     [Fact]
@@ -139,16 +141,17 @@ public sealed class AppealServiceTests
         db.Set<UserReport>().Add(new UserReport(100UL, "User", 200UL, "Reporter", false, "NA"));
         await db.SaveChangesAsync();
 
-        // First appeal: win (report deleted)
+        // First appeal: win (report marked as appealed)
         var service = new AppealService(db, new FakeRandomProvider(50));
         var result1 = await service.ProcessAppeal(100UL, "User");
         Assert.True(result1.Value.Won);
 
-        // Second appeal: no eligible reports remain
+        // Second appeal: report exists but already appealed
         var result2 = await service.ProcessAppeal(100UL, "User");
         Assert.True(result2.IsSuccess);
-        Assert.True(result2.Value.HadNoReports);
-        Assert.Equal(10, result2.Value.PenaltyReportsAdded);
+        Assert.False(result2.Value.Won);
+        Assert.False(result2.Value.HadNoReports);
+        Assert.Equal(AppealRejectionReason.AllAppealed, result2.Value.RejectionReason);
     }
 
     [Fact]
@@ -201,7 +204,7 @@ public sealed class AppealServiceTests
         db.Set<UserReport>().Add(new UserReport(100UL, "User", 200UL, "Reporter", false, "CH"));
         await db.SaveChangesAsync();
 
-        // Win — removes the unappealed report
+        // Win — marks the unappealed report as appealed
         var service = new AppealService(db, new FakeRandomProvider(50));
         var result = await service.ProcessAppeal(100UL, "User");
 
@@ -209,9 +212,9 @@ public sealed class AppealServiceTests
         Assert.True(result.Value.Won);
         Assert.Equal(AppealRejectionReason.None, result.Value.RejectionReason);
 
-        // Only the two appealed reports should remain
+        // All three reports should remain, all marked as appealed
         var remaining = await db.Set<UserReport>().ToListAsync();
-        Assert.Equal(2, remaining.Count);
+        Assert.Equal(3, remaining.Count);
         Assert.All(remaining, r => Assert.True(r.HasBeenAppealed));
     }
 
@@ -273,10 +276,11 @@ public sealed class AppealServiceTests
         Assert.True(result.Value.Won);
         Assert.Equal(AppealRejectionReason.None, result.Value.RejectionReason);
 
-        // Only the self-report should remain
+        // Both reports should remain; the appealed one is marked
         var remaining = await db.Set<UserReport>().ToListAsync();
-        Assert.Single(remaining);
-        Assert.Equal(100UL, remaining[0].InitiatedUserDiscordId);
+        Assert.Equal(2, remaining.Count);
+        var appealedReport = remaining.First(r => r.InitiatedUserDiscordId == 200UL);
+        Assert.True(appealedReport.HasBeenAppealed);
     }
 
     [Fact]

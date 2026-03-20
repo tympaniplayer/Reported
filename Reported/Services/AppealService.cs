@@ -20,8 +20,9 @@ public sealed class AppealService
     {
         try
         {
-            // Find an eligible report: unappealed and not self-initiated
+            // Find the oldest eligible report: unappealed and not self-initiated
             var report = await _dbContext.Set<UserReport>()
+                .OrderBy(r => r.Id)
                 .FirstOrDefaultAsync(r =>
                     r.DiscordId == userDiscordId
                     && !r.HasBeenAppealed
@@ -30,10 +31,11 @@ public sealed class AppealService
             if (report is null)
             {
                 // Determine why no eligible report was found
-                var hasAnyReports = await _dbContext.Set<UserReport>()
-                    .AnyAsync(r => r.DiscordId == userDiscordId);
+                var mostRecentReport = await _dbContext.Set<UserReport>()
+                    .OrderByDescending(r => r.Id)
+                    .FirstOrDefaultAsync(r => r.DiscordId == userDiscordId);
 
-                if (!hasAnyReports)
+                if (mostRecentReport is null)
                 {
                     // No reports at all — penalty: add 10 "DU" reports, do NOT create AppealRecord
                     for (var i = 0; i < 10; i++)
@@ -54,14 +56,11 @@ public sealed class AppealService
                         PenaltyReportsAdded: 10));
                 }
 
-                // Has reports but none eligible — determine rejection reason
-                var hasUnappealedSelfReports = await _dbContext.Set<UserReport>()
-                    .AnyAsync(r =>
-                        r.DiscordId == userDiscordId
-                        && !r.HasBeenAppealed
-                        && r.DiscordId == r.InitiatedUserDiscordId);
+                // Has reports but none eligible — check the most recent to determine why
+                var isSelfReport = mostRecentReport.DiscordId == mostRecentReport.InitiatedUserDiscordId
+                    && !mostRecentReport.HasBeenAppealed;
 
-                var rejectionReason = hasUnappealedSelfReports
+                var rejectionReason = isSelfReport
                     ? AppealRejectionReason.OnlySelfReports
                     : AppealRejectionReason.AllAppealed;
 
@@ -87,10 +86,10 @@ public sealed class AppealService
 
             if (coinToss > 49)
             {
-                // Win — remove the report
+                // Win — mark the report as appealed (preserve history)
                 appealRecord.AppealWins++;
                 appealRecord.AppealAttempts++;
-                _dbContext.Set<UserReport>().Remove(report);
+                report.HasBeenAppealed = true;
                 await _dbContext.SaveChangesAsync();
 
                 return Result.Success(new AppealOutcome(
