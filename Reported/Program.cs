@@ -8,6 +8,7 @@ using Reported.Models;
 using Reported.Persistence;
 using Reported.Services;
 using Serilog;
+using Serilog.Events;
 using Serilog.Formatting.Elasticsearch;
 
 namespace Reported;
@@ -30,7 +31,17 @@ public static class Program
         _client = new DiscordSocketClient();
         _client.Log += message =>
         {
-            _logger.Information(message.ToString());
+            var level = message.Severity switch
+            {
+                LogSeverity.Critical => LogEventLevel.Fatal,
+                LogSeverity.Error => LogEventLevel.Error,
+                LogSeverity.Warning => LogEventLevel.Warning,
+                LogSeverity.Info => LogEventLevel.Information,
+                LogSeverity.Verbose => LogEventLevel.Verbose,
+                LogSeverity.Debug => LogEventLevel.Debug,
+                _ => LogEventLevel.Information
+            };
+            _logger!.Write(level, message.Exception, "{Source}: {DiscordMessage}", message.Source, message.Message);
             return Task.CompletedTask;
         };
         await _client.LoginAsync(TokenType.Bot, token);
