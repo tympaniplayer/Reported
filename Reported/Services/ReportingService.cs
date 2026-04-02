@@ -36,9 +36,9 @@ public sealed class ReportingService(ReportedDbContext dbContext, IRandomProvide
                 await _dbContext.SaveChangesAsync();
 
                 var totalOnInitiator = await _dbContext.Set<UserReport>()
-                    .CountAsync(r => r.DiscordId == initiatorDiscordId && !r.HasBeenAppealed);
+                    .CountAsync(r => r.DiscordId == initiatorDiscordId);
                 var totalOfTypeOnInitiator = await _dbContext.Set<UserReport>()
-                    .CountAsync(r => r.DiscordId == initiatorDiscordId && !r.HasBeenAppealed && r.Description == reasonCode);
+                    .CountAsync(r => r.DiscordId == initiatorDiscordId && r.Description == reasonCode);
 
                 return Result.Success(new ReportOutcome(
                     initiatorDiscordId, initiatorName,
@@ -56,9 +56,9 @@ public sealed class ReportingService(ReportedDbContext dbContext, IRandomProvide
             var times = isCriticalHit ? 2 : 1;
 
             var existingTotal = await _dbContext.Set<UserReport>()
-                .CountAsync(r => r.DiscordId == targetDiscordId && !r.HasBeenAppealed);
+                .CountAsync(r => r.DiscordId == targetDiscordId);
             var existingOfType = await _dbContext.Set<UserReport>()
-                .CountAsync(r => r.DiscordId == targetDiscordId && !r.HasBeenAppealed && r.Description == reasonCode);
+                .CountAsync(r => r.DiscordId == targetDiscordId && r.Description == reasonCode);
 
             for (var i = 0; i < times; i++)
             {
@@ -90,7 +90,7 @@ public sealed class ReportingService(ReportedDbContext dbContext, IRandomProvide
         try
         {
             var groups = await _dbContext.Set<UserReport>()
-                .Where(r => r.DiscordId == userDiscordId && !r.HasBeenAppealed)
+                .Where(r => r.DiscordId == userDiscordId)
                 .GroupBy(r => r.InitiatedDiscordName)
                 .Select(g => new ReportGroup(g.Key, g.Key, g.Count()))
                 .ToListAsync();
@@ -108,7 +108,7 @@ public sealed class ReportingService(ReportedDbContext dbContext, IRandomProvide
         try
         {
             var groups = await _dbContext.Set<UserReport>()
-                .Where(r => r.DiscordId == userDiscordId && !r.HasBeenAppealed)
+                .Where(r => r.DiscordId == userDiscordId)
                 .GroupBy(r => r.Description)
                 .Select(g => new { Key = g.Key, Count = g.Count() })
                 .ToListAsync();

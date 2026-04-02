@@ -37,7 +37,7 @@ public sealed class AppealServiceTests
     }
 
     [Fact]
-    public async Task ProcessAppeal_Loss_AddsPenaltyReport()
+    public async Task ProcessAppeal_Loss_DoesNotAddPenaltyReport()
     {
         using var factory = TestDbContextFactory.Create();
         var db = factory.Context;
@@ -55,10 +55,10 @@ public sealed class AppealServiceTests
         Assert.False(result.Value.Won);
         Assert.Equal(0, result.Value.AppealWins);
         Assert.Equal(1, result.Value.AppealAttempts);
-        Assert.Equal(1, result.Value.PenaltyReportsAdded);
+        Assert.Equal(0, result.Value.PenaltyReportsAdded);
 
         var reportCount = await db.Set<UserReport>().CountAsync();
-        Assert.Equal(2, reportCount); // original + 1 penalty
+        Assert.Equal(1, reportCount); // original only, no penalty
     }
 
     [Fact]
@@ -107,7 +107,7 @@ public sealed class AppealServiceTests
         Assert.Equal(1, result1.Value.AppealWins);
         Assert.Equal(1, result1.Value.AppealAttempts);
 
-        // Second appeal: loss (adds 1 penalty report)
+        // Second appeal: loss (report stands, no penalty)
         var service2 = new AppealService(db, new FakeRandomProvider(49));
         var result2 = await service2.ProcessAppeal(100UL, "User");
         Assert.False(result2.Value.Won);
@@ -219,7 +219,7 @@ public sealed class AppealServiceTests
     }
 
     [Fact]
-    public async Task ProcessAppeal_Loss_PenaltyReportIsPreMarkedAsAppealed()
+    public async Task ProcessAppeal_Loss_NoPenaltyReportCreated()
     {
         using var factory = TestDbContextFactory.Create();
         var db = factory.Context;
@@ -233,10 +233,10 @@ public sealed class AppealServiceTests
         Assert.True(result.IsSuccess);
         Assert.False(result.Value.Won);
 
-        // The penalty report (self-initiated) should be marked as appealed
+        // Only the original report should exist — no penalty added
         var reports = await db.Set<UserReport>().ToListAsync();
-        var penalty = reports.First(r => r.InitiatedUserDiscordId == 100UL);
-        Assert.True(penalty.HasBeenAppealed);
+        Assert.Single(reports);
+        Assert.Equal(200UL, reports[0].InitiatedUserDiscordId);
     }
 
     [Fact]

@@ -101,15 +101,9 @@ public sealed class AppealService
             }
             else
             {
-                // Loss — mark as appealed and add 1 penalty report (pre-marked as appealed)
+                // Loss — report stands, no penalty added
                 appealRecord.AppealAttempts++;
                 report.HasBeenAppealed = true;
-
-                _dbContext.Set<UserReport>().Add(new UserReport(
-                    userDiscordId, userName,
-                    userDiscordId, userName,
-                    false, report.Description,
-                    hasBeenAppealed: true));
 
                 await _dbContext.SaveChangesAsync();
 
@@ -118,7 +112,7 @@ public sealed class AppealService
                     AppealWins: appealRecord.AppealWins,
                     AppealAttempts: appealRecord.AppealAttempts,
                     HadNoReports: false,
-                    PenaltyReportsAdded: 1));
+                    PenaltyReportsAdded: 0));
             }
         }
         catch (Exception ex)
