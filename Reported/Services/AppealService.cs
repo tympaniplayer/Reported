@@ -73,7 +73,12 @@ public sealed class AppealService
                     RejectionReason: rejectionReason));
             }
 
-            var coinToss = _random.Next(0, 100);
+            // Roll 0-99:
+            //   0-4   → critical win  (5%)  marks 2 reports appealed (any source, incl. already-appealed)
+            //   5     → critical fail (1%)  consumes the eligible report and adds 5 "DU" reports
+            //   6-52  → regular win   (47%)
+            //   53-99 → regular loss  (47%)
+            var roll = _random.Next(0, 100);
 
             var appealRecord = await _dbContext.Set<AppealRecord>()
                 .FirstOrDefaultAsync(a => a.DiscordId == userDiscordId);
@@ -84,9 +89,65 @@ public sealed class AppealService
                 _dbContext.Set<AppealRecord>().Add(appealRecord);
             }
 
-            if (coinToss > 49)
+            if (roll < 5)
             {
-                // Win — mark the report as appealed (preserve history)
+                // Critical win — mark a second report appealed regardless of prior appeal status
+                appealRecord.AppealWins++;
+                appealRecord.AppealAttempts++;
+                report.HasBeenAppealed = true;
+
+                var secondTarget = await _dbContext.Set<UserReport>()
+                    .OrderBy(r => r.Id)
+                    .FirstOrDefaultAsync(r =>
+                        r.DiscordId == userDiscordId
+                        && r.Id != report.Id
+                        && r.DiscordId != r.InitiatedUserDiscordId);
+
+                if (secondTarget is not null)
+                {
+                    secondTarget.HasBeenAppealed = true;
+                }
+
+                await _dbContext.SaveChangesAsync();
+
+                return Result.Success(new AppealOutcome(
+                    Won: true,
+                    AppealWins: appealRecord.AppealWins,
+                    AppealAttempts: appealRecord.AppealAttempts,
+                    HadNoReports: false,
+                    PenaltyReportsAdded: 0,
+                    IsCriticalWin: true,
+                    ReportsAppealed: secondTarget is not null ? 2 : 1));
+            }
+
+            if (roll == 5)
+            {
+                // Critical fail — eligible report still consumed, plus 5 "DU" penalty reports
+                appealRecord.AppealAttempts++;
+                report.HasBeenAppealed = true;
+
+                for (var i = 0; i < 5; i++)
+                {
+                    _dbContext.Set<UserReport>().Add(new UserReport(
+                        userDiscordId, userName,
+                        userDiscordId, userName,
+                        true, "DU"));
+                }
+
+                await _dbContext.SaveChangesAsync();
+
+                return Result.Success(new AppealOutcome(
+                    Won: false,
+                    AppealWins: appealRecord.AppealWins,
+                    AppealAttempts: appealRecord.AppealAttempts,
+                    HadNoReports: false,
+                    PenaltyReportsAdded: 5,
+                    IsCriticalFail: true));
+            }
+
+            if (roll <= 52)
+            {
+                // Regular win — mark the report as appealed (preserve history)
                 appealRecord.AppealWins++;
                 appealRecord.AppealAttempts++;
                 report.HasBeenAppealed = true;
@@ -99,21 +160,19 @@ public sealed class AppealService
                     HadNoReports: false,
                     PenaltyReportsAdded: 0));
             }
-            else
-            {
-                // Loss — report stands, no penalty added
-                appealRecord.AppealAttempts++;
-                report.HasBeenAppealed = true;
 
-                await _dbContext.SaveChangesAsync();
+            // Regular loss — report stands, no penalty added
+            appealRecord.AppealAttempts++;
+            report.HasBeenAppealed = true;
 
-                return Result.Success(new AppealOutcome(
-                    Won: false,
-                    AppealWins: appealRecord.AppealWins,
-                    AppealAttempts: appealRecord.AppealAttempts,
-                    HadNoReports: false,
-                    PenaltyReportsAdded: 0));
-            }
+            await _dbContext.SaveChangesAsync();
+
+            return Result.Success(new AppealOutcome(
+                Won: false,
+                AppealWins: appealRecord.AppealWins,
+                AppealAttempts: appealRecord.AppealAttempts,
+                HadNoReports: false,
+                PenaltyReportsAdded: 0));
         }
         catch (Exception ex)
         {

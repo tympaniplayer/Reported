@@ -6,4 +6,7 @@ public sealed record AppealOutcome(
     int AppealAttempts,
     bool HadNoReports,
     int PenaltyReportsAdded,
-    AppealRejectionReason RejectionReason = AppealRejectionReason.None);
+    AppealRejectionReason RejectionReason = AppealRejectionReason.None,
+    bool IsCriticalWin = false,
+    bool IsCriticalFail = false,
+    int ReportsAppealed = 1);

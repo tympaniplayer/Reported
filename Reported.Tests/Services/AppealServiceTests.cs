@@ -45,8 +45,8 @@ public sealed class AppealServiceTests
         db.Set<UserReport>().Add(new UserReport(100UL, "User", 200UL, "Reporter", false, "NA"));
         await db.SaveChangesAsync();
 
-        // [49] → loss (49 <= 49)
-        var random = new FakeRandomProvider(49);
+        // [99] → regular loss (53-99 range)
+        var random = new FakeRandomProvider(99);
         var service = new AppealService(db, random);
 
         var result = await service.ProcessAppeal(100UL, "User");
@@ -108,7 +108,7 @@ public sealed class AppealServiceTests
         Assert.Equal(1, result1.Value.AppealAttempts);
 
         // Second appeal: loss (report stands, no penalty)
-        var service2 = new AppealService(db, new FakeRandomProvider(49));
+        var service2 = new AppealService(db, new FakeRandomProvider(99));
         var result2 = await service2.ProcessAppeal(100UL, "User");
         Assert.False(result2.Value.Won);
         Assert.Equal(1, result2.Value.AppealWins);
@@ -163,7 +163,7 @@ public sealed class AppealServiceTests
         db.Set<UserReport>().Add(new UserReport(100UL, "User", 200UL, "Reporter", false, "NA"));
         await db.SaveChangesAsync();
 
-        var service = new AppealService(db, new FakeRandomProvider(49));
+        var service = new AppealService(db, new FakeRandomProvider(99));
         var result = await service.ProcessAppeal(100UL, "User");
 
         Assert.True(result.IsSuccess);
@@ -227,7 +227,7 @@ public sealed class AppealServiceTests
         db.Set<UserReport>().Add(new UserReport(100UL, "User", 200UL, "Reporter", false, "NA"));
         await db.SaveChangesAsync();
 
-        var service = new AppealService(db, new FakeRandomProvider(49));
+        var service = new AppealService(db, new FakeRandomProvider(99));
         var result = await service.ProcessAppeal(100UL, "User");
 
         Assert.True(result.IsSuccess);
@@ -299,6 +299,155 @@ public sealed class AppealServiceTests
         Assert.True(result.IsSuccess);
         Assert.False(result.Value.Won);
         Assert.Equal(AppealRejectionReason.OnlySelfReports, result.Value.RejectionReason);
+    }
+
+    [Fact]
+    public async Task ProcessAppeal_CriticalWin_MarksTwoReportsAppealed()
+    {
+        using var factory = TestDbContextFactory.Create();
+        var db = factory.Context;
+
+        db.Set<UserReport>().Add(new UserReport(100UL, "User", 200UL, "Reporter", false, "NA"));
+        db.Set<UserReport>().Add(new UserReport(100UL, "User", 200UL, "Reporter", false, "VA"));
+        await db.SaveChangesAsync();
+
+        // [0] → critical win (0-4 range)
+        var service = new AppealService(db, new FakeRandomProvider(0));
+        var result = await service.ProcessAppeal(100UL, "User");
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value.Won);
+        Assert.True(result.Value.IsCriticalWin);
+        Assert.False(result.Value.IsCriticalFail);
+        Assert.Equal(2, result.Value.ReportsAppealed);
+        Assert.Equal(1, result.Value.AppealWins);
+        Assert.Equal(1, result.Value.AppealAttempts);
+        Assert.Equal(0, result.Value.PenaltyReportsAdded);
+
+        var reports = await db.Set<UserReport>().ToListAsync();
+        Assert.Equal(2, reports.Count);
+        Assert.All(reports, r => Assert.True(r.HasBeenAppealed));
+    }
+
+    [Fact]
+    public async Task ProcessAppeal_CriticalWin_TargetsAlreadyAppealedReport()
+    {
+        using var factory = TestDbContextFactory.Create();
+        var db = factory.Context;
+
+        // Older report already appealed (denied previously); newer report eligible
+        db.Set<UserReport>().Add(new UserReport(100UL, "User", 200UL, "Reporter", false, "NA", hasBeenAppealed: true));
+        db.Set<UserReport>().Add(new UserReport(100UL, "User", 200UL, "Reporter", false, "VA"));
+        await db.SaveChangesAsync();
+
+        // [4] → still critical win (0-4 range)
+        var service = new AppealService(db, new FakeRandomProvider(4));
+        var result = await service.ProcessAppeal(100UL, "User");
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value.IsCriticalWin);
+        Assert.Equal(2, result.Value.ReportsAppealed);
+
+        var reports = await db.Set<UserReport>().OrderBy(r => r.Id).ToListAsync();
+        Assert.All(reports, r => Assert.True(r.HasBeenAppealed));
+    }
+
+    [Fact]
+    public async Task ProcessAppeal_CriticalWin_OnlyOneReport_DoesNotCrash()
+    {
+        using var factory = TestDbContextFactory.Create();
+        var db = factory.Context;
+
+        db.Set<UserReport>().Add(new UserReport(100UL, "User", 200UL, "Reporter", false, "NA"));
+        await db.SaveChangesAsync();
+
+        var service = new AppealService(db, new FakeRandomProvider(0));
+        var result = await service.ProcessAppeal(100UL, "User");
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value.IsCriticalWin);
+        Assert.Equal(1, result.Value.ReportsAppealed);
+        Assert.Equal(1, result.Value.AppealWins);
+
+        var reports = await db.Set<UserReport>().ToListAsync();
+        Assert.Single(reports);
+        Assert.True(reports[0].HasBeenAppealed);
+    }
+
+    [Fact]
+    public async Task ProcessAppeal_CriticalFail_AddsFiveDuPenaltyReports()
+    {
+        using var factory = TestDbContextFactory.Create();
+        var db = factory.Context;
+
+        db.Set<UserReport>().Add(new UserReport(100UL, "User", 200UL, "Reporter", false, "NA"));
+        await db.SaveChangesAsync();
+
+        // [5] → critical fail
+        var service = new AppealService(db, new FakeRandomProvider(5));
+        var result = await service.ProcessAppeal(100UL, "User");
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value.Won);
+        Assert.True(result.Value.IsCriticalFail);
+        Assert.False(result.Value.IsCriticalWin);
+        Assert.Equal(0, result.Value.AppealWins);
+        Assert.Equal(1, result.Value.AppealAttempts);
+        Assert.Equal(5, result.Value.PenaltyReportsAdded);
+
+        var reports = await db.Set<UserReport>().ToListAsync();
+        Assert.Equal(6, reports.Count);
+
+        var original = reports.Single(r => r.InitiatedUserDiscordId == 200UL);
+        Assert.True(original.HasBeenAppealed);
+
+        var penalties = reports.Where(r => r.InitiatedUserDiscordId == 100UL).ToList();
+        Assert.Equal(5, penalties.Count);
+        Assert.All(penalties, r =>
+        {
+            Assert.Equal("DU", r.Description);
+            Assert.True(r.Confused);
+            Assert.Equal(100UL, r.DiscordId);
+        });
+    }
+
+    [Fact]
+    public async Task ProcessAppeal_RegularWinBoundaries_StillWin()
+    {
+        foreach (var roll in new[] { 6, 30, 52 })
+        {
+            using var factory = TestDbContextFactory.Create();
+            var db = factory.Context;
+
+            db.Set<UserReport>().Add(new UserReport(100UL, "User", 200UL, "Reporter", false, "NA"));
+            await db.SaveChangesAsync();
+
+            var service = new AppealService(db, new FakeRandomProvider(roll));
+            var result = await service.ProcessAppeal(100UL, "User");
+
+            Assert.True(result.Value.Won, $"roll {roll} should be a regular win");
+            Assert.False(result.Value.IsCriticalWin, $"roll {roll} should not be critical");
+        }
+    }
+
+    [Fact]
+    public async Task ProcessAppeal_RegularLossBoundaries_StillLoss()
+    {
+        foreach (var roll in new[] { 53, 75, 99 })
+        {
+            using var factory = TestDbContextFactory.Create();
+            var db = factory.Context;
+
+            db.Set<UserReport>().Add(new UserReport(100UL, "User", 200UL, "Reporter", false, "NA"));
+            await db.SaveChangesAsync();
+
+            var service = new AppealService(db, new FakeRandomProvider(roll));
+            var result = await service.ProcessAppeal(100UL, "User");
+
+            Assert.False(result.Value.Won, $"roll {roll} should be a regular loss");
+            Assert.False(result.Value.IsCriticalFail, $"roll {roll} should not be critical");
+            Assert.Equal(0, result.Value.PenaltyReportsAdded);
+        }
     }
 
     [Fact]
