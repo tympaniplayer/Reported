@@ -169,6 +169,29 @@ public static class Program
             await command.RespondAsync(
                 $"{user.Mention}, LOL you didn't have any reports to appeal. Here is 10 to get you started");
         }
+        else if (outcome.IsCriticalWin)
+        {
+            _logger!.Information(
+                "Appeal outcome for {DiscordId}: {AppealOutcome}, total wins: {TotalWins}, total attempts: {TotalAttempts}, reports appealed: {ReportsAppealed}",
+                user.Id, "won-critical", outcome.AppealWins, outcome.AppealAttempts, outcome.ReportsAppealed);
+
+            var critMessage = outcome.ReportsAppealed >= 2
+                ? $"{user.Mention}, CRITICAL APPEAL! :sparkles::sparkles: Two reports vanish into the void — appeal approved twice over"
+                : $"{user.Mention}, CRITICAL APPEAL! :sparkles: The judge wanted to wipe two reports but you only had one. Lucky you";
+
+            await command.RespondAsync(critMessage);
+            await command.FollowupAsync(
+                "https://tenor.com/view/tiger-woods-stare-we-can-do-it-gif-11974968");
+        }
+        else if (outcome.IsCriticalFail)
+        {
+            _logger!.Information(
+                "Appeal outcome for {DiscordId}: {AppealOutcome}, total wins: {TotalWins}, total attempts: {TotalAttempts}, penalty: {PenaltyReportsAdded}",
+                user.Id, "lost-critical", outcome.AppealWins, outcome.AppealAttempts, outcome.PenaltyReportsAdded);
+
+            await command.RespondAsync(
+                $"{user.Mention}, CRITICAL FAIL on appeal! :gavel::boom: The judge slammed the gavel and gave you 5 fresh DU reports for wasting their time");
+        }
         else if (outcome.Won)
         {
             _logger!.Information(
