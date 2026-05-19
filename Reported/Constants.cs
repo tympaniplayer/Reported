@@ -2,6 +2,9 @@ namespace Reported;
 
 public static class Constants
 {
+    public const string DefaultAppealSuccessGifUrl =
+        "https://tenor.com/view/tiger-woods-stare-we-can-do-it-gif-11974968";
+
     public static readonly Dictionary<string, string> ReportReasons = new()
     {
         { "NA", "Negative Attitude" },

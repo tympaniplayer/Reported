@@ -2,6 +2,7 @@ using System.Text;
 using Discord;
 using Discord.Net;
 using Discord.WebSocket;
+using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
 using Reported.External;
 using Reported.Models;
@@ -96,6 +97,7 @@ public static class Program
             await _client.CreateGlobalApplicationCommandAsync(Commands.WhyReportedCommand());
             await _client.CreateGlobalApplicationCommandAsync(Commands.AppealCommand());
             await _client.CreateGlobalApplicationCommandAsync(Commands.AppealCountCommand());
+            await _client.CreateGlobalApplicationCommandAsync(Commands.SetAppealGifCommand());
         }
         catch (HttpException exception)
         {
@@ -127,6 +129,9 @@ public static class Program
             case "appeal-count":
                 await HandleAppealCount(dbContext, command);
                 break;
+            case "set-appeal-gif":
+                await HandleSetAppealGif(dbContext, command);
+                break;
             default:
                 _logger!.Error($"Unexpected command name received: {command.CommandName} Investigate");
                 break;
@@ -146,6 +151,10 @@ public static class Program
         }
 
         var outcome = result.Value;
+        var prefs = await dbContext.Set<UserPreferences>()
+            .FirstOrDefaultAsync(p => p.DiscordId == user.Id);
+        var successGifUrl = prefs?.AppealSuccessGifUrl ?? Constants.DefaultAppealSuccessGifUrl;
+        var failureGifUrl = prefs?.AppealFailureGifUrl;
 
         if (outcome.RejectionReason != AppealRejectionReason.None)
         {
@@ -180,8 +189,7 @@ public static class Program
                 : $"{user.Mention}, CRITICAL APPEAL! :sparkles: The judge wanted to wipe two reports but you only had one. Lucky you";
 
             await command.RespondAsync(critMessage);
-            await command.FollowupAsync(
-                "https://tenor.com/view/tiger-woods-stare-we-can-do-it-gif-11974968");
+            await command.FollowupAsync(successGifUrl);
         }
         else if (outcome.IsCriticalFail)
         {
@@ -191,6 +199,10 @@ public static class Program
 
             await command.RespondAsync(
                 $"{user.Mention}, CRITICAL FAIL on appeal! :gavel::boom: The judge slammed the gavel and gave you 5 fresh DU reports for wasting their time");
+            if (failureGifUrl is not null)
+            {
+                await command.FollowupAsync(failureGifUrl);
+            }
         }
         else if (outcome.Won)
         {
@@ -200,8 +212,7 @@ public static class Program
 
             await command.RespondAsync(
                 $"{user.Mention}, you have been treated poorly. Appeal approved :white_check_mark:");
-            await command.FollowupAsync(
-                "https://tenor.com/view/tiger-woods-stare-we-can-do-it-gif-11974968");
+            await command.FollowupAsync(successGifUrl);
         }
         else
         {
@@ -211,7 +222,60 @@ public static class Program
 
             await command.RespondAsync(
                 $"{user.Mention}, no you deserved that report. Appeal denied :no_entry_sign: ");
+            if (failureGifUrl is not null)
+            {
+                await command.FollowupAsync(failureGifUrl);
+            }
         }
+    }
+
+    private static async Task HandleSetAppealGif(ReportedDbContext dbContext, SocketSlashCommand command)
+    {
+        var user = command.User;
+        var type = (string)command.Data.Options.First(o => o.Name == "type").Value;
+        var url = ((string)command.Data.Options.First(o => o.Name == "url").Value).Trim();
+
+        var clearing = string.Equals(url, "clear", StringComparison.OrdinalIgnoreCase);
+        if (!clearing && !TenorUrl.IsValid(url))
+        {
+            await command.RespondAsync(
+                $"{user.Mention}, that doesn't look like a Tenor URL. Use a link from tenor.com/view/... or media.tenor.com/... (or 'clear' to remove).",
+                ephemeral: true);
+            return;
+        }
+
+        var prefs = await dbContext.Set<UserPreferences>()
+            .FirstOrDefaultAsync(p => p.DiscordId == user.Id);
+        if (prefs is null)
+        {
+            prefs = new UserPreferences(user.Id);
+            dbContext.Add(prefs);
+        }
+
+        var newValue = clearing ? null : url;
+        switch (type)
+        {
+            case "success":
+                prefs.AppealSuccessGifUrl = newValue;
+                break;
+            case "failure":
+                prefs.AppealFailureGifUrl = newValue;
+                break;
+            default:
+                await command.RespondAsync(
+                    $"{user.Mention}, unknown type '{type}'.", ephemeral: true);
+                return;
+        }
+
+        await dbContext.SaveChangesAsync();
+        _logger!.Information(
+            "Appeal GIF preference updated for {DiscordId}: {GifType} {Action}",
+            user.Id, type, clearing ? "cleared" : "set");
+
+        var verb = clearing ? "cleared" : "saved";
+        await command.RespondAsync(
+            $"{user.Mention}, your appeal {type} GIF has been {verb}. :white_check_mark:",
+            ephemeral: true);
     }
 
     private static async Task HandleAppealCount(ReportedDbContext dbContext, SocketSlashCommand command)
