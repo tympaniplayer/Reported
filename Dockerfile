@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG TARGETARCH
 WORKDIR /src
 
@@ -16,7 +16,7 @@ RUN dotnet test --configuration Release --no-restore --verbosity normal
 FROM test AS publish
 RUN dotnet publish Reported/Reported.csproj -a $TARGETARCH -c Release -o /app/publish --no-restore
 
-FROM mcr.microsoft.com/dotnet/runtime:9.0 AS final
+FROM mcr.microsoft.com/dotnet/runtime:10.0 AS final
 RUN groupadd -r reported && useradd -r -g reported reported
 RUN mkdir -p /data && chown reported:reported /data
 WORKDIR /app
