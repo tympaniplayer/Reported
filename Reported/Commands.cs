@@ -75,4 +75,23 @@ public static class Commands
                 InteractionContextType.BotDm,
                 InteractionContextType.Guild)
             .Build();
+
+    public static SlashCommandProperties SetAppealGifCommand() =>
+        new SlashCommandBuilder()
+            .WithName("set-appeal-gif")
+            .WithDescription("Set your personal Tenor GIF for appeal outcomes")
+            .WithContextTypes(InteractionContextType.PrivateChannel,
+                InteractionContextType.BotDm,
+                InteractionContextType.Guild)
+            .AddOption(new SlashCommandOptionBuilder()
+                .WithName("type")
+                .WithDescription("Which appeal outcome the GIF is for")
+                .WithRequired(true)
+                .WithType(ApplicationCommandOptionType.String)
+                .AddChoice("success", "success")
+                .AddChoice("failure", "failure"))
+            .AddOption("url", ApplicationCommandOptionType.String,
+                "Tenor URL (tenor.com/view/... or media.tenor.com/...), or 'clear' to remove",
+                isRequired: true)
+            .Build();
 }
