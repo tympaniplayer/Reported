@@ -98,6 +98,7 @@ public static class Program
             await _client.CreateGlobalApplicationCommandAsync(Commands.AppealCommand());
             await _client.CreateGlobalApplicationCommandAsync(Commands.AppealCountCommand());
             await _client.CreateGlobalApplicationCommandAsync(Commands.SetAppealGifCommand());
+            await _client.CreateGlobalApplicationCommandAsync(Commands.RegisterBirthdayCommand());
         }
         catch (HttpException exception)
         {
@@ -131,6 +132,9 @@ public static class Program
                 break;
             case "set-appeal-gif":
                 await HandleSetAppealGif(dbContext, command);
+                break;
+            case "register-birthday":
+                await HandleRegisterBirthday(dbContext, command);
                 break;
             default:
                 _logger!.Error($"Unexpected command name received: {command.CommandName} Investigate");
@@ -227,6 +231,60 @@ public static class Program
                 await command.FollowupAsync(failureGifUrl);
             }
         }
+    }
+
+    private static async Task HandleRegisterBirthday(ReportedDbContext dbContext, SocketSlashCommand command)
+    {
+        var user = command.User;
+        var month = (int)(long)command.Data.Options.First(o => o.Name == "month").Value;
+        var day = (int)(long)command.Data.Options.First(o => o.Name == "day").Value;
+
+        if (!IsValidMonthDay(month, day))
+        {
+            await command.RespondAsync(
+                $"{user.Mention}, {month}/{day} isn't a real date. Try again.",
+                ephemeral: true);
+            return;
+        }
+
+        var prefs = await dbContext.Set<UserPreferences>()
+            .FirstOrDefaultAsync(p => p.DiscordId == user.Id);
+
+        if (prefs is { BirthdayMonth: not null, BirthdayDay: not null })
+        {
+            await command.RespondAsync(
+                $"{user.Mention}, your birthday is already set to {prefs.BirthdayMonth:D2}/{prefs.BirthdayDay:D2}. No take-backsies :lock:",
+                ephemeral: true);
+            return;
+        }
+
+        if (prefs is null)
+        {
+            prefs = new UserPreferences(user.Id);
+            dbContext.Add(prefs);
+        }
+
+        prefs.BirthdayMonth = month;
+        prefs.BirthdayDay = day;
+        await dbContext.SaveChangesAsync();
+
+        _logger!.Information("Birthday registered for {DiscordId}: {Month}/{Day}", user.Id, month, day);
+        await command.RespondAsync(
+            $"{user.Mention}, your birthday ({month:D2}/{day:D2}) is locked in :birthday: On that day, you're immune to reports.",
+            ephemeral: true);
+    }
+
+    private static bool IsValidMonthDay(int month, int day)
+    {
+        if (month < 1 || month > 12 || day < 1) return false;
+        var daysInMonth = month switch
+        {
+            1 or 3 or 5 or 7 or 8 or 10 or 12 => 31,
+            4 or 6 or 9 or 11 => 30,
+            2 => 29,
+            _ => 0
+        };
+        return day <= daysInMonth;
     }
 
     private static async Task HandleSetAppealGif(ReportedDbContext dbContext, SocketSlashCommand command)
@@ -422,7 +480,17 @@ public static class Program
 
         var outcome = result.Value;
 
-        if (outcome.IsSelfReport)
+        if (outcome.IsBirthdayImmune && outcome.IsSelfReport)
+        {
+            await command.RespondAsync(
+                $"{initiatedUser.Mention} hurt themselves in their confusion... but it's their birthday! :birthday: Reports deflected.");
+        }
+        else if (outcome.IsBirthdayImmune)
+        {
+            await command.RespondAsync(
+                $"{guildUser.Mention} is celebrating their birthday today :birthday: Reports bounce off harmlessly.");
+        }
+        else if (outcome.IsSelfReport)
         {
             await command.RespondAsync(
                 $"Oof, {initiatedUser.Mention} has hurt themselves in their confusion and has reported themselves 5 times");

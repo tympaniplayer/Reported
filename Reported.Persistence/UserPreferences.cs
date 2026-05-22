@@ -6,4 +6,6 @@ public sealed class UserPreferences(ulong discordId)
     public ulong DiscordId { get; set; } = discordId;
     public string? AppealSuccessGifUrl { get; set; }
     public string? AppealFailureGifUrl { get; set; }
+    public int? BirthdayMonth { get; set; }
+    public int? BirthdayDay { get; set; }
 }
