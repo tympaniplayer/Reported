@@ -25,6 +25,21 @@ public sealed class ReportingService(ReportedDbContext dbContext, IRandomProvide
             var selfReportRoll = _random.Next(0, 100);
             if (selfReportRoll < 5)
             {
+                if (await IsBirthdayToday(initiatorDiscordId))
+                {
+                    return Result.Success(new ReportOutcome(
+                        initiatorDiscordId, initiatorName,
+                        reasonCode, reasonDescription,
+                        ReportCount: 0,
+                        TotalReportsOnTarget: await _dbContext.Set<UserReport>()
+                            .CountAsync(r => r.DiscordId == initiatorDiscordId),
+                        TotalReportsOfThisType: await _dbContext.Set<UserReport>()
+                            .CountAsync(r => r.DiscordId == initiatorDiscordId && r.Description == reasonCode),
+                        IsCriticalHit: false,
+                        IsSelfReport: true,
+                        IsBirthdayImmune: true));
+                }
+
                 for (var i = 0; i < 5; i++)
                 {
                     _dbContext.Set<UserReport>().Add(new UserReport(
@@ -48,6 +63,23 @@ public sealed class ReportingService(ReportedDbContext dbContext, IRandomProvide
                     TotalReportsOfThisType: totalOfTypeOnInitiator,
                     IsCriticalHit: false,
                     IsSelfReport: true));
+            }
+
+            if (await IsBirthdayToday(targetDiscordId))
+            {
+                var totalOnTarget = await _dbContext.Set<UserReport>()
+                    .CountAsync(r => r.DiscordId == targetDiscordId);
+                var totalOfTypeOnTarget = await _dbContext.Set<UserReport>()
+                    .CountAsync(r => r.DiscordId == targetDiscordId && r.Description == reasonCode);
+                return Result.Success(new ReportOutcome(
+                    targetDiscordId, targetName,
+                    reasonCode, reasonDescription,
+                    ReportCount: 0,
+                    TotalReportsOnTarget: totalOnTarget,
+                    TotalReportsOfThisType: totalOfTypeOnTarget,
+                    IsCriticalHit: false,
+                    IsSelfReport: false,
+                    IsBirthdayImmune: true));
             }
 
             // Critical hit check: 1% chance
@@ -83,6 +115,16 @@ public sealed class ReportingService(ReportedDbContext dbContext, IRandomProvide
         {
             return Result.Failure<ReportOutcome>(ex.Message);
         }
+    }
+
+    private async Task<bool> IsBirthdayToday(ulong discordId)
+    {
+        var prefs = await _dbContext.Set<UserPreferences>()
+            .FirstOrDefaultAsync(p => p.DiscordId == discordId);
+        if (prefs?.BirthdayMonth is null || prefs.BirthdayDay is null)
+            return false;
+        var today = DateTime.UtcNow;
+        return prefs.BirthdayMonth == today.Month && prefs.BirthdayDay == today.Day;
     }
 
     public async Task<Result<IReadOnlyList<ReportGroup>>> GetReportsByReporter(ulong userDiscordId)

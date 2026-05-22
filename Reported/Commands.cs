@@ -94,4 +94,27 @@ public static class Commands
                 "Tenor URL (tenor.com/view/... or media.tenor.com/...), or 'clear' to remove",
                 isRequired: true)
             .Build();
+
+    public static SlashCommandProperties RegisterBirthdayCommand() =>
+        new SlashCommandBuilder()
+            .WithName("register-birthday")
+            .WithDescription("Register your birthday for report immunity (one-time, no take-backs)")
+            .WithContextTypes(InteractionContextType.PrivateChannel,
+                InteractionContextType.BotDm,
+                InteractionContextType.Guild)
+            .AddOption(new SlashCommandOptionBuilder()
+                .WithName("month")
+                .WithDescription("Birthday month (1-12)")
+                .WithRequired(true)
+                .WithType(ApplicationCommandOptionType.Integer)
+                .WithMinValue(1)
+                .WithMaxValue(12))
+            .AddOption(new SlashCommandOptionBuilder()
+                .WithName("day")
+                .WithDescription("Birthday day (1-31)")
+                .WithRequired(true)
+                .WithType(ApplicationCommandOptionType.Integer)
+                .WithMinValue(1)
+                .WithMaxValue(31))
+            .Build();
 }

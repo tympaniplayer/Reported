@@ -9,4 +9,5 @@ public sealed record ReportOutcome(
     int TotalReportsOnTarget,
     int TotalReportsOfThisType,
     bool IsCriticalHit,
-    bool IsSelfReport);
+    bool IsSelfReport,
+    bool IsBirthdayImmune = false);
