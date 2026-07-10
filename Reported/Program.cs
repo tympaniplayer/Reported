@@ -294,10 +294,10 @@ public static class Program
         var url = ((string)command.Data.Options.First(o => o.Name == "url").Value).Trim();
 
         var clearing = string.Equals(url, "clear", StringComparison.OrdinalIgnoreCase);
-        if (!clearing && !TenorUrl.IsValid(url))
+        if (!clearing && !GifUrl.IsValid(url))
         {
             await command.RespondAsync(
-                $"{user.Mention}, that doesn't look like a Tenor URL. Use a link from tenor.com/view/... or media.tenor.com/... (or 'clear' to remove).",
+                $"{user.Mention}, that doesn't look like a supported GIF URL. Use a link from Tenor, Giphy, or Klipy (e.g. tenor.com/view/..., giphy.com/gifs/..., klipy.com/gifs/...) — or 'clear' to remove.",
                 ephemeral: true);
             return;
         }
