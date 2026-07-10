@@ -79,7 +79,7 @@ public static class Commands
     public static SlashCommandProperties SetAppealGifCommand() =>
         new SlashCommandBuilder()
             .WithName("set-appeal-gif")
-            .WithDescription("Set your personal Tenor GIF for appeal outcomes")
+            .WithDescription("Set your personal GIF (Tenor, Giphy, or Klipy) for appeal outcomes")
             .WithContextTypes(InteractionContextType.PrivateChannel,
                 InteractionContextType.BotDm,
                 InteractionContextType.Guild)
@@ -91,7 +91,7 @@ public static class Commands
                 .AddChoice("success", "success")
                 .AddChoice("failure", "failure"))
             .AddOption("url", ApplicationCommandOptionType.String,
-                "Tenor URL (tenor.com/view/... or media.tenor.com/...), or 'clear' to remove",
+                "GIF URL from Tenor, Giphy, or Klipy (e.g. giphy.com/gifs/...), or 'clear' to remove",
                 isRequired: true)
             .Build();
 
