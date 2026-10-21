@@ -26,6 +26,38 @@ public sealed class UserReportTests
     }
 
     [Fact]
+    public async Task CreateUserReport_RecordsCreatedAtInUtc()
+    {
+        using var factory = TestDbContextFactory.Create();
+        var db = factory.Context;
+
+        var before = DateTime.UtcNow;
+        db.Set<UserReport>().Add(new UserReport(100UL, "User", 200UL, "Reporter", false, "NA"));
+        await db.SaveChangesAsync();
+        var after = DateTime.UtcNow;
+
+        db.ChangeTracker.Clear();
+        var saved = await db.Set<UserReport>().FirstAsync();
+        Assert.NotNull(saved.CreatedAt);
+        Assert.InRange(saved.CreatedAt.Value, before, after);
+    }
+
+    [Fact]
+    public async Task LegacyReportWithoutTimestamp_LoadsWithNullCreatedAt()
+    {
+        using var factory = TestDbContextFactory.Create();
+        var db = factory.Context;
+
+        await db.Database.ExecuteSqlRawAsync("""
+            INSERT INTO "UserReport" ("DiscordId", "DiscordName", "InitiatedUserDiscordId", "InitiatedDiscordName", "Confused", "Description", "HasBeenAppealed")
+            VALUES (100, 'User', 200, 'Reporter', 0, 'NA', 1)
+            """);
+
+        var saved = await db.Set<UserReport>().FirstAsync();
+        Assert.Null(saved.CreatedAt);
+    }
+
+    [Fact]
     public async Task MultipleReports_SameUser_ReturnsCorrectCount()
     {
         using var factory = TestDbContextFactory.Create();

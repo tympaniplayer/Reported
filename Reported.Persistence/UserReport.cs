@@ -16,4 +16,7 @@ public sealed class UserReport(ulong discordId,
     public bool Confused { get; set; } = confused;
     public string? Description { get; set; } = description;
     public bool HasBeenAppealed { get; set; } = hasBeenAppealed;
+
+    // Null for reports filed before timestamps were recorded.
+    public DateTime? CreatedAt { get; set; } = DateTime.UtcNow;
 }
