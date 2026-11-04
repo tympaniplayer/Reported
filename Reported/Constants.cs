@@ -20,6 +20,7 @@ public static class Constants
         { "KS", "Kill Steal" },
         { "IL", "Why aren't you in my lobby?" },
         { "WTF", "WTF" },
-        {"QCD", "Quincy"}
+        { "QCD", "Quincy" },
+	{ "AI", "AI Slop"}
     };
 }
